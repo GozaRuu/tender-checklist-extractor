@@ -20,7 +20,13 @@ interface ProgressUpdate {
 
 export async function POST(request: NextRequest) {
   try {
-    const formData = await request.formData();
+    // Add timeout and better error handling for FormData parsing
+    const formData = await Promise.race([
+      request.formData(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("FormData parsing timeout")), 30000)
+      ),
+    ]);
 
     // Session ID is generated internally by parseDocuments
     // const sessionId = formData.get("sessionId") as string;

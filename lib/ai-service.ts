@@ -53,34 +53,62 @@ export async function processChunkWithClaude(
             },
             {
               type: "text",
-              text: `Bitte extrahieren und strukturieren Sie den Textinhalt aus diesem deutschen Ausschreibungsdokument${chunkInfo}. Konzentrieren Sie sich auf:
-              
-              1. Wichtige Informationen und Anforderungen
-              2. Technische Spezifikationen
-              3. Termine und Fristen (besonders Abgabefristen)
-              4. Kontaktinformationen
-              5. Bewertungskriterien
-              6. Einreichungsanforderungen
-              7. Ausschreibungsdetails und Umfang
-              8. Preisgestaltung und kommerzielle Bedingungen
-              9. Formale Anforderungen (wie Angebote eingereicht werden sollen)
-              10. Fristen für Bieterfragen
-              
-              Bitte stellen Sie eine klare, gut strukturierte Zusammenfassung in deutscher Sprache bereit, die alle wichtigen Details und Kontextinformationen bewahrt. Gliedern Sie den Inhalt in logische Abschnitte, die für die Beantwortung von Fragen zu diesem Ausschreibungsdokument nützlich wären.
-              
-              Achten Sie besonders auf:
-              - Alle Datumsangaben und Fristen
-              - Formale Anforderungen für die Angebotseinreichung
-              - Bewertungskriterien
-              - Kontaktinformationen
-              - Technische Spezifikationen
-              
-              ${
-                chunk.metadata.totalChunks > 1
-                  ? `
-              HINWEIS: Dies ist ein Teil eines mehrteiligen Dokuments. Bitte extrahieren Sie alle verfügbaren Informationen aus diesem Abschnitt und weisen Sie darauf hin, wenn Informationen möglicherweise in anderen Teilen des Dokuments enthalten sind.`
-                  : ""
-              }`,
+              text: `Extrahieren Sie ALLE wichtigen Informationen aus diesem deutschen Ausschreibungsdokument${chunkInfo}. Strukturieren Sie die Informationen klar und vollständig:
+
+**KRITISCHE INFORMATIONEN** (immer explizit angeben):
+- Titel der Ausschreibung
+- Referenznummer/Aktenzeichen
+- Auftraggeber (Name, Adresse, Kontakt)
+- Vergabestelle und Ansprechpartner
+- Leistungsumfang und Beschreibung
+- Geschätzter Auftragswert
+- Laufzeit/Vertragsdauer
+
+**FRISTEN UND TERMINE** (alle Daten vollständig):
+- Abgabefrist für Angebote (Datum, Uhrzeit, Ort)
+- Frist für Bieterfragen/Rückfragen
+- Angebotseröffnung (Datum, Uhrzeit, Ort)
+- Zuschlagstermin
+- Leistungsbeginn
+- Einwendungsfristen
+
+**FORMALE ANFORDERUNGEN** (präzise Details):
+- Einreichungsform (elektronisch/schriftlich)
+- Anzahl der Exemplare
+- Formatvorgaben
+- Erforderliche Unterlagen und Nachweise
+- Sprache der Angebote
+- Gültigkeitsdauer der Angebote
+
+**BEWERTUNG UND ZUSCHLAG**:
+- Zuschlagskriterien
+- Gewichtung der Kriterien
+- Bewertungsverfahren
+- Eignungsprüfung
+- Mindestanforderungen
+
+**TECHNISCHE SPEZIFIKATIONEN**:
+- Detaillierte Leistungsbeschreibung
+- Technische Anforderungen
+- Qualitätsstandards
+- Abnahmekriterien
+
+**VERTRAGLICHE BEDINGUNGEN**:
+- Zahlungsmodalitäten
+- Gewährleistung
+- Vertragsstrafen
+- Kündigungsregelungen
+
+Verwenden Sie eine klare, strukturierte Formatierung mit Überschriften und Aufzählungen. Bewahren Sie alle spezifischen Details, Zahlen, Daten und Kontaktinformationen exakt bei. Wenn Informationen fehlen, geben Sie dies explizit an.
+
+${
+  chunk.metadata.totalChunks > 1
+    ? `
+**HINWEIS**: Dies ist Teil ${chunk.metadata.chunkIndex + 1} von ${
+        chunk.metadata.totalChunks
+      }. Extrahieren Sie alle verfügbaren Informationen aus diesem Abschnitt und kennzeichnen Sie fehlende Informationen mit "[Siehe andere Dokumentteile]".`
+    : ""
+}`,
             },
           ],
           role: "user",
@@ -112,25 +140,48 @@ export async function answerQuestion(
     const isConditionInput = isCondition(input);
 
     const prompt = isConditionInput
-      ? `Basierend auf dem folgenden Kontext aus deutschen Ausschreibungsdokumenten, bewerten Sie bitte die folgende Bedingung und antworten Sie nur mit "WAHR" oder "FALSCH", gefolgt von einer kurzen Begründung.
+      ? `Sie sind ein Experte für deutsche Ausschreibungen. Bewerten Sie die folgende Bedingung basierend auf dem Kontext und geben Sie eine klare, definitive Antwort.
 
-Kontext:
+**KONTEXT:**
 ${contextText}
 
-Bedingung: ${input}
+**BEDINGUNG:** ${input}
 
-Antworten Sie im Format:
-WAHR/FALSCH: [Kurze Begründung]
+**ANTWORTFORMAT:**
+Antworten Sie NUR mit einem der folgenden Formate:
 
-Wenn die Information nicht im Kontext verfügbar ist, antworten Sie mit "UNBEKANNT: Information nicht verfügbar".`
-      : `Basierend auf dem folgenden Kontext aus deutschen Ausschreibungsdokumenten, beantworten Sie bitte die Frage präzise und umfassend auf Deutsch. Wenn die Information nicht im Kontext verfügbar ist, geben Sie das klar an.
+WAHR: [Präzise Begründung mit Verweis auf spezifische Dokumentstelle]
+FALSCH: [Präzise Begründung mit Verweis auf spezifische Dokumentstelle]  
+UNBEKANNT: [Spezifische Erklärung, warum die Information nicht verfügbar ist]
 
-Kontext:
+**WICHTIGE REGELN:**
+- Seien Sie präzise und verweisen Sie auf konkrete Dokumentstellen
+- Nutzen Sie nur Informationen aus dem bereitgestellten Kontext
+- Wenn die Information nicht explizit im Kontext steht, wählen Sie UNBEKANNT
+- Geben Sie kurze, aber vollständige Begründungen`
+      : `Sie sind ein Experte für deutsche Ausschreibungen. Beantworten Sie die Frage basierend auf dem Kontext präzise und vollständig.
+
+**KONTEXT:**
 ${contextText}
 
-Frage: ${input}
+**FRAGE:** ${input}
 
-Bitte geben Sie eine detaillierte Antwort basierend auf dem bereitgestellten Kontext.`;
+**ANTWORTFORMAT:**
+Geben Sie eine strukturierte Antwort mit:
+1. **Direkte Antwort:** [Hauptantwort in 1-2 Sätzen]
+2. **Details:** [Relevante Einzelheiten aus dem Kontext]
+3. **Quelle:** [Verweis auf spezifische Dokumentstelle]
+
+**WICHTIGE REGELN:**
+- Seien Sie konkret und präzise
+- Verwenden Sie nur Informationen aus dem bereitgestellten Kontext
+- Wenn die Information nicht verfügbar ist, sagen Sie dies explizit
+- Geben Sie spezifische Zahlen, Daten und Details an
+- Strukturieren Sie die Antwort logisch und verständlich
+- Vermeiden Sie unnötige Wiederholungen
+
+Wenn die Information nicht im Kontext verfügbar ist, antworten Sie mit:
+**INFORMATION NICHT VERFÜGBAR:** [Spezifische Erklärung, was fehlt und wo es normalerweise stehen würde]`;
 
     const response = await anthropic.messages.create({
       model: aiConfig.claude.model,

@@ -177,7 +177,7 @@ export function ProgressTimeline({
     return () => {
       // Clean up abort controller if it exists
       if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
+        // abortControllerRef.current.abort();
         abortControllerRef.current = null;
       }
     };

@@ -39,14 +39,14 @@
   },
   "processing": {
     "extraction": {
-      "batchSize": 6,
+      "batchSize": 4,
       "totalStepsMultiplier": 2,
       "baseStepsCount": 2
     },
     "embeddings": {
       "batchSize": 100,
-      "defaultTopK": 5,
-      "indexingDelayMs": 2000
+      "defaultTopK": 25,
+      "indexingDelayMs": 1000
     },
     "retry": {
       "maxRetries": 3,
@@ -71,9 +71,9 @@
   },
   "text": {
     "processing": {
-      "maxParagraphLength": 1000,
-      "maxSentenceChunkLength": 1000,
-      "minTextLength": 10,
+      "maxParagraphLength": 800,
+      "maxSentenceChunkLength": 800,
+      "minTextLength": 30,
       "paragraphSplitRegex": "\\n\\s*\\n",
       "sentenceSplitRegex": "[.!?]+",
       "dateRegex": "\\b\\d{1,2}\\.?\\d{1,2}\\.?\\d{2,4}\\b",

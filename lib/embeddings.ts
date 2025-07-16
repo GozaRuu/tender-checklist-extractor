@@ -179,7 +179,7 @@ async function testEmbeddingsStorage(sessionId: string): Promise<void> {
 export async function searchRelevantChunks(
   question: string,
   sessionId: string,
-  topK: number = 13
+  topK: number = 25
 ): Promise<VectorSearchResult[]> {
   try {
     console.log(`\n=== SEARCHING RELEVANT CHUNKS ===`);
