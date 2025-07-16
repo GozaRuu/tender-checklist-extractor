@@ -14,6 +14,7 @@ import {
   MessageSquare,
   Trash2,
 } from "lucide-react";
+import type { ProcessingResult } from "@/lib/types";
 
 interface ProgressEvent {
   type: "progress" | "completion" | "error";
@@ -24,16 +25,13 @@ interface ProgressEvent {
   currentStep: number;
   totalSteps: number;
   timestamp: number;
-  results?: {
-    results: unknown[];
-    debugInfo: unknown[];
-  };
+  results?: ProcessingResult;
   error?: string;
 }
 
 interface ProgressTimelineProps {
   formData: FormData;
-  onComplete: (results: { results: unknown[]; debugInfo: unknown[] }) => void;
+  onComplete: (results: ProcessingResult) => void;
   onError: (error: string) => void;
 }
 
@@ -46,6 +44,7 @@ function getStepIcon(step: string, isCompleted: boolean, isError: boolean) {
     starting: <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />,
     chunking: <FileText className="h-4 w-4 text-blue-500" />,
     chunks_created: <FileText className="h-4 w-4 text-green-500" />,
+    processing_file: <FileText className="h-4 w-4 text-blue-500" />,
     processing: <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />,
     embedding_prep: <Database className="h-4 w-4 text-blue-500" />,
     chunk_processed: <CheckCircle className="h-4 w-4 text-green-500" />,
@@ -146,7 +145,9 @@ export function ProgressTimeline({
                 } else if (event.type === "completion") {
                   setIsCompleted(true);
                   setIsProcessing(false);
-                  onComplete(event.results || { results: [], debugInfo: [] });
+                  onComplete(
+                    event.results || { fileResults: [], debugInfo: [] }
+                  );
                 } else if (event.type === "error") {
                   setIsProcessing(false);
                   onError(event.error || "Processing failed");

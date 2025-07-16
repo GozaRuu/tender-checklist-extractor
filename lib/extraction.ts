@@ -4,6 +4,8 @@ import type {
   QuestionAnswer,
   DocumentExtractionDebug,
   QueryType,
+  FileResult,
+  ProcessingResult,
 } from "./types";
 import {
   generateEmbeddings,
@@ -28,6 +30,17 @@ function generateSessionId(): string {
   return `${sessionConfig.namespacePrefix}${Date.now()}-${Math.random()
     .toString(36)
     .substr(2, sessionConfig.sessionIdLength)}`;
+}
+
+/**
+ * Generate a file-specific session ID
+ */
+function generateFileSessionId(
+  baseSessionId: string,
+  filename: string
+): string {
+  const sanitizedFilename = filename.replace(/[^a-zA-Z0-9]/g, "_");
+  return `${baseSessionId}_${sanitizedFilename}`;
 }
 
 /**
@@ -77,16 +90,13 @@ export async function parseDocuments(
   files: File[],
   queries: string[],
   onProgress?: ProgressCallback
-): Promise<{
-  results: QuestionAnswer[];
-  debugInfo: DocumentExtractionDebug[];
-}> {
+): Promise<ProcessingResult> {
   try {
     console.log("Starting document processing...");
 
     // Generate a unique session ID for this processing session
-    const sessionId = generateSessionId();
-    console.log(`Session ID: ${sessionId}`);
+    const baseSessionId = generateSessionId();
+    console.log(`Base Session ID: ${baseSessionId}`);
 
     // Helper function to emit progress
     const emitProgress = (
@@ -111,234 +121,277 @@ export async function parseDocuments(
     const chunkPromises = files.map(async (file) => {
       emitProgress("chunking", `Creating chunks for ${file.name}`, file.name);
       const chunks = await createPDFChunks(file);
-      return chunks;
+      return { file, chunks };
     });
 
-    const allChunksArrays = await Promise.all(chunkPromises);
-    const allChunks: DocumentChunk[] = allChunksArrays.flat();
+    const fileChunksArray = await Promise.all(chunkPromises);
 
-    console.log(`Created ${allChunks.length} document chunks`);
+    // Calculate total chunks across all files
+    const totalChunks = fileChunksArray.reduce(
+      (sum, { chunks }) => sum + chunks.length,
+      0
+    );
+    console.log(
+      `Created ${totalChunks} document chunks across ${files.length} files`
+    );
 
     // Calculate actual total steps now that we know the chunk count
     const actualTotalSteps =
-      allChunks.length * processingConfig.extraction.totalStepsMultiplier +
-      queries.length +
+      totalChunks * processingConfig.extraction.totalStepsMultiplier +
+      queries.length * files.length + // Questions per file
       processingConfig.extraction.baseStepsCount;
 
     emitProgress(
       "chunks_created",
-      `Created ${allChunks.length} document chunks`,
+      `Created ${totalChunks} document chunks across ${files.length} files`,
       undefined,
       undefined,
       actualTotalSteps
     );
 
-    // Step 2: Process chunks with Claude and collect debug info
-    const processedChunks: ProcessedChunk[] = [];
+    // Step 2: Process each file separately
+    const fileResults: FileResult[] = [];
     const debugInfo: DocumentExtractionDebug[] = [];
 
-    // Process chunks in parallel with batching to avoid rate limits
-    const BATCH_SIZE = processingConfig.extraction.batchSize;
-    const chunkBatches = [];
+    // Process each file individually
+    for (const { file, chunks } of fileChunksArray) {
+      const fileSessionId = generateFileSessionId(baseSessionId, file.name);
 
-    for (let i = 0; i < allChunks.length; i += BATCH_SIZE) {
-      chunkBatches.push(allChunks.slice(i, i + BATCH_SIZE));
-    }
-
-    for (let batchIndex = 0; batchIndex < chunkBatches.length; batchIndex++) {
-      const batch = chunkBatches[batchIndex];
-
-      console.log(
-        `Processing batch ${batchIndex + 1}/${chunkBatches.length} with ${
-          batch.length
-        } chunks`
+      emitProgress(
+        "processing_file",
+        `Processing file: ${file.name}`,
+        file.name
       );
 
-      const batchPromises = batch.map(async (chunk, indexInBatch) => {
-        const overallIndex = batchIndex * BATCH_SIZE + indexInBatch;
-        const file = files.find((f) => f.name === chunk.metadata.filename);
+      // Step 2a: Process chunks for this file
+      const processedChunks: ProcessedChunk[] = [];
 
-        if (!file) {
-          console.error(`File not found for chunk: ${chunk.id}`);
-          emitProgress(
-            "error",
-            `File not found for chunk: ${chunk.id}`,
-            chunk.metadata.filename,
-            chunk.id
-          );
-          return null;
-        }
+      // Process chunks in parallel with batching to avoid rate limits
+      const BATCH_SIZE = processingConfig.extraction.batchSize;
+      const chunkBatches = [];
+
+      for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
+        chunkBatches.push(chunks.slice(i, i + BATCH_SIZE));
+      }
+
+      for (let batchIndex = 0; batchIndex < chunkBatches.length; batchIndex++) {
+        const batch = chunkBatches[batchIndex];
 
         console.log(
-          `Processing chunk ${overallIndex + 1}/${allChunks.length}: ${
-            chunk.id
-          }`
+          `Processing batch ${batchIndex + 1}/${chunkBatches.length} with ${
+            batch.length
+          } chunks for ${file.name}`
         );
+
+        const batchPromises = batch.map(async (chunk, indexInBatch) => {
+          const overallIndex = batchIndex * BATCH_SIZE + indexInBatch;
+
+          console.log(
+            `Processing chunk ${overallIndex + 1}/${chunks.length}: ${
+              chunk.id
+            } in ${file.name}`
+          );
+          emitProgress(
+            "processing",
+            `Processing chunk ${overallIndex + 1}/${chunks.length}`,
+            file.name,
+            chunk.id
+          );
+
+          try {
+            const processedText = await processPDFChunk(file, chunk);
+
+            emitProgress(
+              "embedding_prep",
+              `Preparing embeddings for ${chunk.id}`,
+              file.name,
+              chunk.id
+            );
+
+            // Split into paragraphs for embedding
+            const paragraphs = splitTextIntoParagraphs(processedText);
+            const embeddings = await generateEmbeddings(paragraphs);
+
+            // Store debug info
+            const debugEntry = {
+              filename: file.name,
+              rawExtraction: processedText,
+              chunks: paragraphs,
+            };
+
+            // Create processed chunks for this chunk
+            const chunkProcessedChunks = paragraphs.map((paragraph, idx) => ({
+              id: `${chunk.id}-paragraph-${idx}`,
+              text: paragraph,
+              embedding: embeddings[idx],
+              metadata: chunk.metadata,
+            }));
+
+            emitProgress(
+              "chunk_processed",
+              `Processed chunk ${chunk.id}`,
+              file.name,
+              chunk.id
+            );
+
+            return { debugEntry, chunkProcessedChunks };
+          } catch (error) {
+            console.error(`Error processing chunk ${chunk.id}:`, error);
+            emitProgress(
+              "error",
+              `Error processing chunk: ${
+                error instanceof Error ? error.message : "Unknown error"
+              }`,
+              file.name,
+              chunk.id
+            );
+            return null;
+          }
+        });
+
+        // Wait for all chunks in this batch to complete
+        const batchResults = await Promise.all(batchPromises);
+
+        // Collect results from successful chunks
+        batchResults.forEach((result) => {
+          if (result) {
+            debugInfo.push(result.debugEntry);
+            processedChunks.push(...result.chunkProcessedChunks);
+          }
+        });
+      }
+
+      console.log(
+        `Created ${processedChunks.length} processed chunks for ${file.name}`
+      );
+      emitProgress(
+        "embeddings_ready",
+        `Created ${processedChunks.length} processed chunks for ${file.name}`,
+        file.name
+      );
+
+      // Step 2b: Store embeddings for this file
+      emitProgress(
+        "storing_embeddings",
+        `Storing embeddings for ${file.name}...`,
+        file.name
+      );
+
+      console.log(`\n=== STORING EMBEDDINGS FOR ${file.name} ===`);
+      console.log(`File Session ID: ${fileSessionId}`);
+      console.log(`About to store ${processedChunks.length} processed chunks`);
+
+      await storeEmbeddings(processedChunks, fileSessionId);
+      console.log(`Embeddings stored successfully for ${file.name}`);
+      emitProgress(
+        "embeddings_stored",
+        `Embeddings stored for ${file.name}`,
+        file.name
+      );
+
+      // Step 2c: Answer questions for this file
+      const fileAnswers: QuestionAnswer[] = [];
+
+      for (let i = 0; i < queries.length; i++) {
+        const query = queries[i];
+        const queryType = detectQueryType(query);
+
+        console.log(
+          `\n=== PROCESSING QUERY ${i + 1}/${queries.length} FOR ${
+            file.name
+          } ===`
+        );
+        console.log(`Query: ${query}`);
+        console.log(`Type: ${queryType}`);
+        console.log(`File Session ID: ${fileSessionId}`);
+
         emitProgress(
-          "processing",
-          `Processing chunk ${overallIndex + 1}/${allChunks.length}`,
-          file.name,
-          chunk.id
+          "answering",
+          `Processing ${queryType} ${i + 1}/${queries.length} for ${
+            file.name
+          }: ${query}`,
+          file.name
         );
 
         try {
-          const processedText = await processPDFChunk(file, chunk);
-
-          emitProgress(
-            "embedding_prep",
-            `Preparing embeddings for ${chunk.id}`,
-            file.name,
-            chunk.id
+          const relevantChunks = await searchRelevantChunks(
+            query,
+            fileSessionId
+          );
+          console.log(
+            `Found ${relevantChunks.length} relevant chunks for ${file.name}`
           );
 
-          // Split into paragraphs for embedding
-          const paragraphs = splitTextIntoParagraphs(processedText);
-          const embeddings = await generateEmbeddings(paragraphs);
-
-          // Store debug info
-          const debugEntry = {
-            filename: file.name,
-            rawExtraction: processedText,
-            chunks: paragraphs,
-          };
-
-          // Create processed chunks for this chunk
-          const chunkProcessedChunks = paragraphs.map((paragraph, idx) => ({
-            id: `${chunk.id}-paragraph-${idx}`,
-            text: paragraph,
-            embedding: embeddings[idx],
-            metadata: chunk.metadata,
-          }));
-
-          emitProgress(
-            "chunk_processed",
-            `Processed chunk ${chunk.id}`,
-            file.name,
-            chunk.id
+          const context = relevantChunks.map(
+            (chunk) => chunk.metadata.text || ""
+          );
+          console.log(
+            `Context lengths for ${file.name}: ${context.map((c) => c.length)}`
           );
 
-          return { debugEntry, chunkProcessedChunks };
+          const answer = await answerQuestion(query, context);
+
+          fileAnswers.push({
+            query,
+            answer,
+            confidence:
+              relevantChunks.length > 0 ? relevantChunks[0].score || 0 : 0,
+            sources: [file.name], // Only this file as source
+            type: queryType,
+            debugInfo: {
+              relevantChunks,
+              contextUsed: context,
+            },
+          });
+
+          emitProgress(
+            "question_answered",
+            `Processed ${queryType} for ${file.name}: ${query}`,
+            file.name
+          );
         } catch (error) {
-          console.error(`Error processing chunk ${chunk.id}:`, error);
+          console.error(
+            `Error processing ${queryType} "${query}" for ${file.name}:`,
+            error
+          );
           emitProgress(
             "error",
-            `Error processing chunk: ${
+            `Error processing ${queryType}: ${
               error instanceof Error ? error.message : "Unknown error"
             }`,
-            file.name,
-            chunk.id
+            file.name
           );
-          return null;
+          fileAnswers.push({
+            query,
+            answer:
+              "Error: Unable to process this query due to processing error.",
+            confidence: 0,
+            sources: [file.name],
+            type: queryType,
+            debugInfo: {
+              relevantChunks: [],
+              contextUsed: [],
+            },
+          });
         }
-      });
-
-      // Wait for all chunks in this batch to complete
-      const batchResults = await Promise.all(batchPromises);
-
-      // Collect results from successful chunks
-      batchResults.forEach((result) => {
-        if (result) {
-          debugInfo.push(result.debugEntry);
-          processedChunks.push(...result.chunkProcessedChunks);
-        }
-      });
-    }
-
-    console.log(`Created ${processedChunks.length} processed chunks`);
-    emitProgress(
-      "embeddings_ready",
-      `Created ${processedChunks.length} processed chunks`
-    );
-
-    // Step 3: Store embeddings
-    emitProgress(
-      "storing_embeddings",
-      "Storing embeddings in vector database..."
-    );
-
-    console.log(`\n=== EXTRACTION DEBUG ===`);
-    console.log(`Session ID: ${sessionId}`);
-    console.log(`About to store ${processedChunks.length} processed chunks`);
-
-    await storeEmbeddings(processedChunks, sessionId);
-    console.log("Embeddings stored successfully");
-    emitProgress("embeddings_stored", "Embeddings stored successfully");
-
-    // Step 4: Answer questions and evaluate conditions
-    const results: QuestionAnswer[] = [];
-    for (let i = 0; i < queries.length; i++) {
-      const query = queries[i];
-      const queryType = detectQueryType(query);
-
-      console.log(`\n=== PROCESSING QUERY ${i + 1}/${queries.length} ===`);
-      console.log(`Query: ${query}`);
-      console.log(`Type: ${queryType}`);
-      console.log(`Session ID: ${sessionId}`);
-
-      emitProgress(
-        "answering",
-        `Processing ${queryType} ${i + 1}/${queries.length}: ${query}`
-      );
-
-      try {
-        const relevantChunks = await searchRelevantChunks(query, sessionId);
-        console.log(`Found ${relevantChunks.length} relevant chunks`);
-
-        const context = relevantChunks.map(
-          (chunk) => chunk.metadata.text || ""
-        );
-        console.log(`Context lengths: ${context.map((c) => c.length)}`);
-
-        const answer = await answerQuestion(query, context);
-
-        results.push({
-          query,
-          answer,
-          confidence:
-            relevantChunks.length > 0 ? relevantChunks[0].score || 0 : 0,
-          sources: relevantChunks.map(
-            (chunk) => chunk.metadata.filename || "Unknown"
-          ),
-          type: queryType,
-          debugInfo: {
-            relevantChunks,
-            contextUsed: context,
-          },
-        });
-
-        emitProgress("question_answered", `Processed ${queryType}: ${query}`);
-      } catch (error) {
-        console.error(`Error processing ${queryType} "${query}":`, error);
-        emitProgress(
-          "error",
-          `Error processing ${queryType}: ${
-            error instanceof Error ? error.message : "Unknown error"
-          }`
-        );
-        results.push({
-          query,
-          answer:
-            "Error: Unable to process this query due to processing error.",
-          confidence: 0,
-          sources: [],
-          type: queryType,
-          debugInfo: {
-            relevantChunks: [],
-            contextUsed: [],
-          },
-        });
       }
+
+      // Add file result
+      fileResults.push({
+        filename: file.name,
+        answers: fileAnswers,
+      });
+
+      // Clean up embeddings for this file
+      console.log(`\n=== CLEANING UP EMBEDDINGS FOR ${file.name} ===`);
+      console.log(`File Session ID: ${fileSessionId}`);
+      await cleanupEmbeddings(fileSessionId);
     }
 
     console.log("Document processing completed");
-    emitProgress("cleaning_up", "Cleaning up temporary data...");
+    emitProgress("completed", "All files processed successfully");
 
-    // Clean up embeddings after processing
-    console.log(`\n=== CLEANING UP EMBEDDINGS ===`);
-    console.log(`Session ID: ${sessionId}`);
-    await cleanupEmbeddings(sessionId);
-
-    return { results, debugInfo };
+    return { fileResults, debugInfo };
   } catch (error) {
     console.error("Error in parseDocuments:", error);
     onProgress?.(

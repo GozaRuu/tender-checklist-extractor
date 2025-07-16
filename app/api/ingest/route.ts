@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { parseDocuments } from "@/lib";
+import type { ProcessingResult } from "@/lib/types";
 
 export const maxDuration = 120;
 
@@ -13,10 +14,7 @@ interface ProgressUpdate {
   currentStep: number;
   totalSteps: number;
   timestamp: number;
-  results?: {
-    results: unknown[];
-    debugInfo: unknown[];
-  };
+  results?: ProcessingResult;
   error?: string;
 }
 
@@ -66,7 +64,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Initial estimate for total steps (will be updated during processing)
-    let totalSteps = files.length * 2 + questions.length + 2; // Rough estimate
+    let totalSteps = files.length * 2 + questions.length * files.length + 2; // Updated estimate
 
     // Create streaming response
     const encoder = new TextEncoder();
@@ -116,10 +114,10 @@ export async function POST(request: NextRequest) {
 
           // Process documents with progress callback
           console.log(
-            `Processing ${files.length} files with ${questions.length} questions`
+            `Processing ${files.length} files with ${questions.length} questions each`
           );
 
-          const { results, debugInfo } = await parseDocuments(
+          const processingResult = await parseDocuments(
             files,
             questions,
             onProgress
@@ -133,7 +131,7 @@ export async function POST(request: NextRequest) {
             currentStep: totalSteps,
             totalSteps,
             timestamp: Date.now(),
-            results: { results, debugInfo },
+            results: processingResult,
           };
 
           const chunk = encoder.encode(JSON.stringify(completionUpdate) + "\n");

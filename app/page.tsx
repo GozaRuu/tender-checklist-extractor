@@ -8,10 +8,14 @@ import { DebugDisplay } from "@/components/debug-display";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CheckCircle, AlertCircle, ArrowLeft, Bug } from "lucide-react";
-import type { QuestionAnswer, DocumentExtractionDebug } from "@/lib/types";
+import type {
+  FileResult,
+  DocumentExtractionDebug,
+  ProcessingResult,
+} from "@/lib/types";
 
 export default function Home() {
-  const [results, setResults] = useState<QuestionAnswer[]>([]);
+  const [fileResults, setFileResults] = useState<FileResult[]>([]);
   const [debugInfo, setDebugInfo] = useState<DocumentExtractionDebug[]>([]);
   const [showResults, setShowResults] = useState(false);
   const [showTimeline, setShowTimeline] = useState(false);
@@ -26,7 +30,7 @@ export default function Home() {
   }) => {
     setIsLoading(true);
     setError("");
-    setResults([]);
+    setFileResults([]);
     setDebugInfo([]);
     setShowResults(false);
     setShowDebug(false);
@@ -59,11 +63,8 @@ export default function Home() {
     }
   };
 
-  const handleProgressComplete = (completedData: {
-    results: QuestionAnswer[];
-    debugInfo: DocumentExtractionDebug[];
-  }) => {
-    setResults(completedData.results || []);
+  const handleProgressComplete = (completedData: ProcessingResult) => {
+    setFileResults(completedData.fileResults || []);
     setDebugInfo(completedData.debugInfo || []);
     setShowResults(true);
     setShowTimeline(false);
@@ -77,7 +78,7 @@ export default function Home() {
   };
 
   const handleStartNew = () => {
-    setResults([]);
+    setFileResults([]);
     setDebugInfo([]);
     setShowResults(false);
     setShowTimeline(false);
@@ -135,7 +136,7 @@ export default function Home() {
           )}
 
           {/* Results */}
-          {showResults && results.length > 0 && (
+          {showResults && fileResults.length > 0 && (
             <div className="mb-8">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-2xl font-bold text-gray-900">
@@ -170,7 +171,7 @@ export default function Home() {
                 </div>
               </div>
 
-              <ResultsDisplay results={results} />
+              <ResultsDisplay fileResults={fileResults} />
 
               {/* Debug Display */}
               {showDebug && debugInfo.length > 0 && (
@@ -178,7 +179,10 @@ export default function Home() {
                   <h3 className="text-xl font-bold text-gray-900 mb-4">
                     Debug Information
                   </h3>
-                  <DebugDisplay debugInfo={debugInfo} results={results} />
+                  <DebugDisplay
+                    debugInfo={debugInfo}
+                    results={fileResults.flatMap((file) => file.answers)}
+                  />
                 </div>
               )}
             </div>
