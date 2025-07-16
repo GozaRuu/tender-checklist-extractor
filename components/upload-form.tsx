@@ -3,7 +3,14 @@
 import { useFieldArray, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Trash2, Upload, FileText } from "lucide-react";
+import {
+  Plus,
+  Trash2,
+  Upload,
+  FileText,
+  HelpCircle,
+  Check,
+} from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -31,13 +38,16 @@ const formSchema = z.object({
   questions: z
     .array(
       z.object({
-        question: z.string().min(1, "Question is required"),
+        question: z.string().min(1, "Frage ist erforderlich"),
       })
     )
-    .min(1, "At least one question is required"),
+    .min(1, "Mindestens eine Frage oder Bedingung ist erforderlich"),
   files: z
     .any()
-    .refine((files) => files?.length > 0, "At least one PDF file is required"),
+    .refine(
+      (files) => files?.length > 0,
+      "Mindestens eine PDF-Datei ist erforderlich"
+    ),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -71,7 +81,7 @@ export function UploadForm({ onSubmit, isLoading = false }: UploadFormProps) {
     form.setValue("files", pdfFiles);
 
     if (pdfFiles.length !== files.length) {
-      form.setError("files", { message: "Only PDF files are allowed" });
+      form.setError("files", { message: "Nur PDF-Dateien sind erlaubt" });
     } else {
       form.clearErrors("files");
     }
@@ -93,11 +103,12 @@ export function UploadForm({ onSubmit, isLoading = false }: UploadFormProps) {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <FileText className="h-5 w-5" />
-          Tender Document Extractor
+          Ausschreibungsdokument Analyzer
         </CardTitle>
         <CardDescription>
-          Upload PDF documents and specify questions to extract information from
-          tender documents.
+          Laden Sie PDF-Dokumente hoch und stellen Sie Fragen oder definieren
+          Sie Bedingungen, um Informationen aus Ausschreibungsdokumenten zu
+          extrahieren.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -109,7 +120,9 @@ export function UploadForm({ onSubmit, isLoading = false }: UploadFormProps) {
             {/* Questions Section */}
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <Label className="text-base font-medium">Questions</Label>
+                <Label className="text-base font-medium">
+                  Fragen & Bedingungen
+                </Label>
                 <Button
                   type="button"
                   variant="outline"
@@ -118,8 +131,38 @@ export function UploadForm({ onSubmit, isLoading = false }: UploadFormProps) {
                   className="flex items-center gap-2"
                 >
                   <Plus className="h-4 w-4" />
-                  Add Question
+                  Hinzufügen
                 </Button>
+              </div>
+
+              {/* Examples */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h4 className="font-medium text-blue-900 mb-2 flex items-center gap-2">
+                  <HelpCircle className="h-4 w-4" />
+                  Beispiele
+                </h4>
+                <div className="space-y-2 text-sm text-blue-800">
+                  <div>
+                    <strong>Fragen:</strong>
+                    <ul className="ml-4 mt-1 space-y-1">
+                      <li>
+                        • "In welcher Form sind die Angebote/Teilnahmeanträge
+                        einzureichen?"
+                      </li>
+                      <li>
+                        • "Wann ist die Frist für die Einreichung von
+                        Bieterfragen?"
+                      </li>
+                    </ul>
+                  </div>
+                  <div>
+                    <strong>Bedingungen:</strong>
+                    <ul className="ml-4 mt-1 space-y-1">
+                      <li>• "Ist die Abgabefrist vor dem 31.12.2025?"</li>
+                      <li>• "Sind elektronische Einreichungen erlaubt?"</li>
+                    </ul>
+                  </div>
+                </div>
               </div>
 
               <div className="space-y-3">
@@ -132,7 +175,9 @@ export function UploadForm({ onSubmit, isLoading = false }: UploadFormProps) {
                         <FormItem className="flex-1">
                           <FormControl>
                             <Input
-                              placeholder={`Question ${index + 1}...`}
+                              placeholder={`Frage oder Bedingung ${
+                                index + 1
+                              }...`}
                               {...field}
                               className="flex-1"
                             />
@@ -159,12 +204,13 @@ export function UploadForm({ onSubmit, isLoading = false }: UploadFormProps) {
 
             {/* File Upload Section */}
             <div className="space-y-4">
-              <Label className="text-base font-medium">PDF Documents</Label>
+              <Label className="text-base font-medium">PDF-Dokumente</Label>
               <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
                 <Upload className="h-8 w-8 mx-auto mb-2 text-gray-400" />
                 <div className="space-y-2">
                   <p className="text-sm text-gray-600">
-                    Upload PDF documents to extract information from
+                    Laden Sie PDF-Dokumente hoch, um Informationen zu
+                    extrahieren
                   </p>
                   <Input
                     type="file"
@@ -179,7 +225,7 @@ export function UploadForm({ onSubmit, isLoading = false }: UploadFormProps) {
               {selectedFiles.length > 0 && (
                 <div className="space-y-2">
                   <p className="text-sm font-medium text-gray-700">
-                    Selected Files ({selectedFiles.length}):
+                    Ausgewählte Dateien ({selectedFiles.length}):
                   </p>
                   <ul className="text-sm text-gray-600 space-y-1">
                     {selectedFiles.map((file, index) => (
@@ -206,7 +252,7 @@ export function UploadForm({ onSubmit, isLoading = false }: UploadFormProps) {
               className="w-full"
               size="lg"
             >
-              {isLoading ? "Processing..." : "Generate Checklist"}
+              {isLoading ? "Verarbeitung..." : "Checkliste Generieren"}
             </Button>
           </form>
         </Form>

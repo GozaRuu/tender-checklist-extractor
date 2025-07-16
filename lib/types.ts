@@ -17,11 +17,23 @@ export interface ProcessedChunk {
   metadata: DocumentChunk["metadata"];
 }
 
+export type QueryType = "question" | "condition";
+
+export interface QueryInput {
+  text: string;
+  type: QueryType;
+}
+
 export interface QuestionAnswer {
-  question: string;
+  query: string;
   answer: string;
   confidence: number;
   sources: string[];
+  type: QueryType;
+  debugInfo?: {
+    relevantChunks: VectorSearchResult[];
+    contextUsed: string[];
+  };
 }
 
 // Embeddings types
@@ -31,10 +43,18 @@ export interface EmbeddingsMetadata {
   page: number;
   chunkIndex: number;
   totalChunks: number;
+  [key: string]: any; // Add index signature for compatibility
 }
 
 export interface VectorSearchResult {
   id: string;
   score: number;
   metadata: EmbeddingsMetadata;
+}
+
+// Debug types
+export interface DocumentExtractionDebug {
+  filename: string;
+  rawExtraction: string;
+  chunks: string[];
 }

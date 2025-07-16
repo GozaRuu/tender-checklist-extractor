@@ -1,4 +1,10 @@
-import type { DocumentChunk, ProcessedChunk, QuestionAnswer } from "./types";
+import type {
+  DocumentChunk,
+  ProcessedChunk,
+  QuestionAnswer,
+  DocumentExtractionDebug,
+  QueryType,
+} from "./types";
 import {
   generateEmbeddings,
   storeEmbeddings,
@@ -30,13 +36,70 @@ type ProgressCallback = (
 ) => void;
 
 /**
+ * Detect if input is a question or condition
+ */
+function detectQueryType(input: string): QueryType {
+  // German condition indicators
+  const conditionKeywords = [
+    "ist",
+    "sind",
+    "war",
+    "waren",
+    "wird",
+    "werden",
+    "kann",
+    "können",
+    "muss",
+    "müssen",
+    "sollte",
+    "sollten",
+    "darf",
+    "dürfen",
+    "hat",
+    "haben",
+    "gibt es",
+    "existiert",
+    "vor dem",
+    "nach dem",
+    "bis zum",
+    "ab dem",
+    "spätestens",
+    "frühestens",
+  ];
+
+  const lowercaseInput = input.toLowerCase();
+
+  // Check for condition patterns
+  const hasConditionKeyword = conditionKeywords.some((keyword) =>
+    lowercaseInput.includes(keyword)
+  );
+
+  // Check for question patterns
+  const hasQuestionWord =
+    /^(wer|was|wann|wo|wie|warum|welche|welcher|welches|wessen|wem|wen)/i.test(
+      input
+    );
+  const endsWithQuestionMark = input.trim().endsWith("?");
+
+  // If it has condition keywords but no question words, it's likely a condition
+  if (hasConditionKeyword && !hasQuestionWord && !endsWithQuestionMark) {
+    return "condition";
+  }
+
+  return "question";
+}
+
+/**
  * Main function to process documents and answer questions
  */
 export async function parseDocuments(
   files: File[],
-  questions: string[],
+  queries: string[],
   onProgress?: ProgressCallback
-): Promise<QuestionAnswer[]> {
+): Promise<{
+  results: QuestionAnswer[];
+  debugInfo: DocumentExtractionDebug[];
+}> {
   try {
     console.log("Starting document processing...");
 
@@ -71,8 +134,10 @@ export async function parseDocuments(
       `Created ${allChunks.length} document chunks`
     );
 
-    // Step 2: Process chunks with Claude
+    // Step 2: Process chunks with Claude and collect debug info
     const processedChunks: ProcessedChunk[] = [];
+    const debugInfo: DocumentExtractionDebug[] = [];
+
     for (let i = 0; i < allChunks.length; i++) {
       const chunk = allChunks[i];
       const file = files.find((f) => f.name === chunk.metadata.filename);
@@ -109,6 +174,13 @@ export async function parseDocuments(
         // Split into paragraphs for embedding
         const paragraphs = splitTextIntoParagraphs(processedText);
         const embeddings = await generateEmbeddings(paragraphs);
+
+        // Store debug info
+        debugInfo.push({
+          filename: file.name,
+          rawExtraction: processedText,
+          chunks: paragraphs,
+        });
 
         // Create processed chunks
         paragraphs.forEach((paragraph, idx) => {
@@ -151,52 +223,77 @@ export async function parseDocuments(
       "storing_embeddings",
       "Storing embeddings in vector database..."
     );
+
+    console.log(`\n=== EXTRACTION DEBUG ===`);
+    console.log(`Session ID: ${sessionId}`);
+    console.log(`About to store ${processedChunks.length} processed chunks`);
+
     await storeEmbeddings(processedChunks, sessionId);
     console.log("Embeddings stored successfully");
     emitProgress("embeddings_stored", "Embeddings stored successfully");
 
-    // Step 4: Answer questions
+    // Step 4: Answer questions and evaluate conditions
     const results: QuestionAnswer[] = [];
-    for (let i = 0; i < questions.length; i++) {
-      const question = questions[i];
-      console.log(`Answering question: ${question}`);
+    for (let i = 0; i < queries.length; i++) {
+      const query = queries[i];
+      const queryType = detectQueryType(query);
+
+      console.log(`\n=== PROCESSING QUERY ${i + 1}/${queries.length} ===`);
+      console.log(`Query: ${query}`);
+      console.log(`Type: ${queryType}`);
+      console.log(`Session ID: ${sessionId}`);
+
       emitProgress(
         "answering",
-        `Answering question ${i + 1}/${questions.length}: ${question}`
+        `Processing ${queryType} ${i + 1}/${queries.length}: ${query}`
       );
 
       try {
-        const relevantChunks = await searchRelevantChunks(question, sessionId);
+        const relevantChunks = await searchRelevantChunks(query, sessionId);
+        console.log(`Found ${relevantChunks.length} relevant chunks`);
+
         const context = relevantChunks.map(
-          (chunk) => chunk.metadata?.text || ""
+          (chunk) => chunk.metadata.text || ""
         );
-        const answer = await answerQuestion(question, context);
+        console.log(`Context lengths: ${context.map((c) => c.length)}`);
+
+        const answer = await answerQuestion(query, context);
 
         results.push({
-          question,
+          query,
           answer,
           confidence:
             relevantChunks.length > 0 ? relevantChunks[0].score || 0 : 0,
           sources: relevantChunks.map(
-            (chunk) => chunk.metadata?.filename || "Unknown"
+            (chunk) => chunk.metadata.filename || "Unknown"
           ),
+          type: queryType,
+          debugInfo: {
+            relevantChunks,
+            contextUsed: context,
+          },
         });
 
-        emitProgress("question_answered", `Answered question: ${question}`);
+        emitProgress("question_answered", `Processed ${queryType}: ${query}`);
       } catch (error) {
-        console.error(`Error answering question "${question}":`, error);
+        console.error(`Error processing ${queryType} "${query}":`, error);
         emitProgress(
           "error",
-          `Error answering question: ${
+          `Error processing ${queryType}: ${
             error instanceof Error ? error.message : "Unknown error"
           }`
         );
         results.push({
-          question,
+          query,
           answer:
-            "Error: Unable to answer this question due to processing error.",
+            "Error: Unable to process this query due to processing error.",
           confidence: 0,
           sources: [],
+          type: queryType,
+          debugInfo: {
+            relevantChunks: [],
+            contextUsed: [],
+          },
         });
       }
     }
@@ -205,9 +302,11 @@ export async function parseDocuments(
     emitProgress("cleaning_up", "Cleaning up temporary data...");
 
     // Clean up embeddings after processing
+    console.log(`\n=== CLEANING UP EMBEDDINGS ===`);
+    console.log(`Session ID: ${sessionId}`);
     await cleanupEmbeddings(sessionId);
 
-    return results;
+    return { results, debugInfo };
   } catch (error) {
     console.error("Error in parseDocuments:", error);
     onProgress?.(

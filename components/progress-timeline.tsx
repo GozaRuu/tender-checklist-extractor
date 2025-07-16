@@ -31,7 +31,7 @@ interface ProgressEvent {
 
 interface ProgressTimelineProps {
   formData: FormData;
-  onComplete: (results: any[]) => void;
+  onComplete: (results: any) => void; // Changed from any[] to any
   onError: (error: string) => void;
 }
 
@@ -144,7 +144,7 @@ export function ProgressTimeline({
                 } else if (event.type === "completion") {
                   setIsCompleted(true);
                   setIsProcessing(false);
-                  onComplete(event.results || []);
+                  onComplete(event.results || { results: [], debugInfo: [] });
                 } else if (event.type === "error") {
                   setIsProcessing(false);
                   onError(event.error || "Processing failed");
@@ -159,18 +159,24 @@ export function ProgressTimeline({
         console.error("Error in streaming:", error);
         setIsProcessing(false);
 
+        // Don't show error for aborted requests (user navigated away)
         if (error instanceof Error && error.name === "AbortError") {
           console.log("Processing was cancelled");
-        } else {
-          onError(error instanceof Error ? error.message : "Processing failed");
+          return;
         }
+
+        onError(error instanceof Error ? error.message : "Processing failed");
       }
     };
 
     startProcessing();
 
     return () => {
-      abortControllerRef.current?.abort();
+      // Clean up abort controller if it exists
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
     };
   }, [formData, onComplete, onError]);
 

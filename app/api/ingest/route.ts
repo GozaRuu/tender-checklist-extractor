@@ -11,7 +11,7 @@ interface ProgressUpdate {
   currentStep: number;
   totalSteps: number;
   timestamp: number;
-  results?: any[];
+  results?: any; // Changed from any[] to any to handle new structure
   error?: string;
 }
 
@@ -98,7 +98,11 @@ export async function POST(request: NextRequest) {
             `Processing ${files.length} files with ${questions.length} questions`
           );
 
-          const results = await parseDocuments(files, questions, onProgress);
+          const { results, debugInfo } = await parseDocuments(
+            files,
+            questions,
+            onProgress
+          );
 
           // Send completion update
           const completionUpdate: ProgressUpdate = {
@@ -108,7 +112,7 @@ export async function POST(request: NextRequest) {
             currentStep: totalSteps,
             totalSteps,
             timestamp: Date.now(),
-            results,
+            results: { results, debugInfo },
           };
 
           const chunk = encoder.encode(JSON.stringify(completionUpdate) + "\n");

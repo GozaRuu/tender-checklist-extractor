@@ -32,12 +32,12 @@ export async function createPDFChunks(file: File): Promise<DocumentChunk[]> {
 
     chunks.push({
       id: chunkId,
-      content: "", // Will be filled by Claude processing
+      text: "", // Will be filled by Claude processing
       metadata: {
         filename: file.name,
+        page: 1,
         chunkIndex: 0,
-        pageStart: 1,
-        pageEnd: -1, // -1 indicates entire document
+        totalChunks: 1,
       },
     });
 
@@ -75,18 +75,27 @@ export async function processChunkWithClaude(
             },
             {
               type: "text",
-              text: `Please extract and structure the text content from this PDF document. Focus on:
+              text: `Bitte extrahieren und strukturieren Sie den Textinhalt aus diesem deutschen Ausschreibungsdokument. Konzentrieren Sie sich auf:
               
-              1. Key information and requirements
-              2. Technical specifications
-              3. Dates and deadlines
-              4. Contact information
-              5. Evaluation criteria
-              6. Submission requirements
-              7. Tender details and scope
-              8. Pricing and commercial terms
+              1. Wichtige Informationen und Anforderungen
+              2. Technische Spezifikationen
+              3. Termine und Fristen (besonders Abgabefristen)
+              4. Kontaktinformationen
+              5. Bewertungskriterien
+              6. Einreichungsanforderungen
+              7. Ausschreibungsdetails und Umfang
+              8. Preisgestaltung und kommerzielle Bedingungen
+              9. Formale Anforderungen (wie Angebote eingereicht werden sollen)
+              10. Fristen für Bieterfragen
               
-              Please provide a clear, well-structured summary that preserves all important details and context. Break down the content into logical sections that would be useful for answering questions about this tender document.`,
+              Bitte stellen Sie eine klare, gut strukturierte Zusammenfassung in deutscher Sprache bereit, die alle wichtigen Details und Kontextinformationen bewahrt. Gliedern Sie den Inhalt in logische Abschnitte, die für die Beantwortung von Fragen zu diesem Ausschreibungsdokument nützlich wären.
+              
+              Achten Sie besonders auf:
+              - Alle Datumsangaben und Fristen
+              - Formale Anforderungen für die Angebotseinreichung
+              - Bewertungskriterien
+              - Kontaktinformationen
+              - Technische Spezifikationen`,
             },
           ],
           role: "user",
@@ -110,13 +119,22 @@ export async function processChunkWithClaude(
  * Split text into paragraph-sized chunks for embedding
  */
 export function splitTextIntoParagraphs(text: string): string[] {
+  console.log(`\n=== SPLITTING TEXT INTO PARAGRAPHS ===`);
+  console.log(`Original text length: ${text.length}`);
+
   // Split by double newlines first, then by single newlines if paragraphs are too long
   const paragraphs = text.split(/\n\s*\n/).filter((p) => p.trim().length > 0);
+  console.log(`Initial paragraphs count: ${paragraphs.length}`);
+  console.log(`Initial paragraph lengths: ${paragraphs.map((p) => p.length)}`);
+
   const chunks: string[] = [];
 
   for (const paragraph of paragraphs) {
     // If paragraph is too long, split by sentences
     if (paragraph.length > 1000) {
+      console.log(
+        `Paragraph too long (${paragraph.length} chars), splitting by sentences`
+      );
       const sentences = paragraph
         .split(/[.!?]+/)
         .filter((s) => s.trim().length > 0);
@@ -141,18 +159,102 @@ export function splitTextIntoParagraphs(text: string): string[] {
     }
   }
 
+  console.log(`Final chunks count: ${chunks.length}`);
+  console.log(`Final chunk lengths: ${chunks.map((c) => c.length)}`);
+  console.log(`Sample chunks (first 3):`);
+  chunks.slice(0, 3).forEach((chunk, i) => {
+    console.log(
+      `  Chunk ${i}: "${chunk.substring(0, 100)}${
+        chunk.length > 100 ? "..." : ""
+      }"`
+    );
+  });
+  console.log(`=== TEXT SPLITTING COMPLETED ===\n`);
+
   return chunks;
 }
 
 /**
- * Answer a question using retrieved context with Claude
+ * Detect if input is a question or condition
+ */
+function isCondition(input: string): boolean {
+  // German condition indicators
+  const conditionKeywords = [
+    "ist",
+    "sind",
+    "war",
+    "waren",
+    "wird",
+    "werden",
+    "kann",
+    "können",
+    "muss",
+    "müssen",
+    "sollte",
+    "sollten",
+    "darf",
+    "dürfen",
+    "hat",
+    "haben",
+    "gibt es",
+    "existiert",
+    "vor dem",
+    "nach dem",
+    "bis zum",
+    "ab dem",
+    "spätestens",
+    "frühestens",
+  ];
+
+  const lowercaseInput = input.toLowerCase();
+
+  // Check for condition patterns
+  const hasConditionKeyword = conditionKeywords.some((keyword) =>
+    lowercaseInput.includes(keyword)
+  );
+
+  // Check for question patterns
+  const hasQuestionWord =
+    /^(wer|was|wann|wo|wie|warum|welche|welcher|welches|wessen|wem|wen)/i.test(
+      input
+    );
+  const endsWithQuestionMark = input.trim().endsWith("?");
+
+  // If it has condition keywords but no question words, it's likely a condition
+  return hasConditionKeyword && !hasQuestionWord && !endsWithQuestionMark;
+}
+
+/**
+ * Answer a question or evaluate a condition using retrieved context with Claude
  */
 export async function answerQuestion(
-  question: string,
+  input: string,
   context: string[]
 ): Promise<string> {
   try {
     const contextText = context.join("\n\n");
+    const isConditionInput = isCondition(input);
+
+    const prompt = isConditionInput
+      ? `Basierend auf dem folgenden Kontext aus deutschen Ausschreibungsdokumenten, bewerten Sie bitte die folgende Bedingung und antworten Sie nur mit "WAHR" oder "FALSCH", gefolgt von einer kurzen Begründung.
+
+Kontext:
+${contextText}
+
+Bedingung: ${input}
+
+Antworten Sie im Format:
+WAHR/FALSCH: [Kurze Begründung]
+
+Wenn die Information nicht im Kontext verfügbar ist, antworten Sie mit "UNBEKANNT: Information nicht verfügbar".`
+      : `Basierend auf dem folgenden Kontext aus deutschen Ausschreibungsdokumenten, beantworten Sie bitte die Frage präzise und umfassend auf Deutsch. Wenn die Information nicht im Kontext verfügbar ist, geben Sie das klar an.
+
+Kontext:
+${contextText}
+
+Frage: ${input}
+
+Bitte geben Sie eine detaillierte Antwort basierend auf dem bereitgestellten Kontext.`;
 
     const response = await anthropic.messages.create({
       model: "claude-3-5-sonnet-20241022",
@@ -162,14 +264,7 @@ export async function answerQuestion(
           content: [
             {
               type: "text",
-              text: `Based on the following context from tender documents, please answer the question accurately and comprehensively. If the information is not available in the context, please state that clearly.
-
-Context:
-${contextText}
-
-Question: ${question}
-
-Please provide a detailed answer based on the context provided.`,
+              text: prompt,
             },
           ],
           role: "user",
@@ -185,6 +280,6 @@ Please provide a detailed answer based on the context provided.`,
     }
   } catch (error) {
     console.error("Error answering question:", error);
-    throw new Error(`Failed to answer question: ${question}`);
+    throw new Error(`Failed to answer question: ${input}`);
   }
 }

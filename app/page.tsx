@@ -4,15 +4,18 @@ import { useState } from "react";
 import { UploadForm } from "@/components/upload-form";
 import { ProgressTimeline } from "@/components/progress-timeline";
 import { ResultsDisplay } from "@/components/results-display";
+import { DebugDisplay } from "@/components/debug-display";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CheckCircle, AlertCircle, ArrowLeft } from "lucide-react";
+import { CheckCircle, AlertCircle, ArrowLeft, Bug } from "lucide-react";
 import type { QuestionAnswer } from "@/lib/types";
 
 export default function Home() {
   const [results, setResults] = useState<QuestionAnswer[]>([]);
+  const [debugInfo, setDebugInfo] = useState<any[]>([]);
   const [showResults, setShowResults] = useState(false);
   const [showTimeline, setShowTimeline] = useState(false);
+  const [showDebug, setShowDebug] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>("");
   const [formData, setFormData] = useState<FormData | null>(null);
@@ -24,7 +27,9 @@ export default function Home() {
     setIsLoading(true);
     setError("");
     setResults([]);
+    setDebugInfo([]);
     setShowResults(false);
+    setShowDebug(false);
 
     try {
       const newFormData = new FormData();
@@ -54,8 +59,9 @@ export default function Home() {
     }
   };
 
-  const handleProgressComplete = (completedResults: QuestionAnswer[]) => {
-    setResults(completedResults);
+  const handleProgressComplete = (completedData: any) => {
+    setResults(completedData.results || []);
+    setDebugInfo(completedData.debugInfo || []);
     setShowResults(true);
     setShowTimeline(false);
     setIsLoading(false);
@@ -69,8 +75,10 @@ export default function Home() {
 
   const handleStartNew = () => {
     setResults([]);
+    setDebugInfo([]);
     setShowResults(false);
     setShowTimeline(false);
+    setShowDebug(false);
     setError("");
     setFormData(null);
     setIsLoading(false);
@@ -130,14 +138,24 @@ export default function Home() {
                 <h2 className="text-2xl font-bold text-gray-900">
                   Analysis Results
                 </h2>
-                <Button
-                  onClick={handleStartNew}
-                  variant="outline"
-                  className="flex items-center gap-2"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                  Start New Analysis
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={() => setShowDebug(!showDebug)}
+                    variant="outline"
+                    className="flex items-center gap-2"
+                  >
+                    <Bug className="h-4 w-4" />
+                    {showDebug ? "Hide Debug" : "Show Debug"}
+                  </Button>
+                  <Button
+                    onClick={handleStartNew}
+                    variant="outline"
+                    className="flex items-center gap-2"
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                    Start New Analysis
+                  </Button>
+                </div>
               </div>
 
               <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
@@ -150,6 +168,16 @@ export default function Home() {
               </div>
 
               <ResultsDisplay results={results} />
+
+              {/* Debug Display */}
+              {showDebug && debugInfo.length > 0 && (
+                <div className="mt-8">
+                  <h3 className="text-xl font-bold text-gray-900 mb-4">
+                    Debug Information
+                  </h3>
+                  <DebugDisplay debugInfo={debugInfo} results={results} />
+                </div>
+              )}
             </div>
           )}
         </div>

@@ -34,16 +34,35 @@ export async function generateEmbeddings(
   textChunks: string[]
 ): Promise<number[][]> {
   try {
+    console.log(`\n=== GENERATING EMBEDDINGS ===`);
+    console.log(`Number of text chunks: ${textChunks.length}`);
+    console.log(`Model: ${EMBEDDING_MODEL}`);
+
     const embeddings: number[][] = [];
 
     // Process each text chunk individually
     for (const chunk of textChunks) {
+      console.log(
+        `Processing chunk (length: ${chunk.length}): "${chunk.substring(
+          0,
+          100
+        )}${chunk.length > 100 ? "..." : ""}"`
+      );
+
       const response = await openai.embeddings.create({
         model: EMBEDDING_MODEL,
         input: chunk,
       });
-      embeddings.push(response.data[0].embedding);
+
+      const embedding = response.data[0].embedding;
+      console.log(`Generated embedding with ${embedding.length} dimensions`);
+
+      embeddings.push(embedding);
     }
+
+    console.log(`Generated ${embeddings.length} embeddings`);
+    console.log(`Embedding dimensions: ${embeddings[0]?.length}`);
+    console.log(`=== EMBEDDINGS GENERATION COMPLETED ===\n`);
 
     return embeddings;
   } catch (error) {
@@ -60,6 +79,10 @@ export async function storeEmbeddings(
   sessionId: string
 ): Promise<void> {
   try {
+    console.log(`\n=== STORING EMBEDDINGS ===`);
+    console.log(`Session ID: ${sessionId}`);
+    console.log(`Number of processed chunks: ${processedChunks.length}`);
+
     const namespace = createNamespace(sessionId);
 
     const vectors = processedChunks.map((chunk, index) => ({
@@ -68,21 +91,85 @@ export async function storeEmbeddings(
       metadata: {
         text: chunk.text,
         filename: chunk.metadata.filename,
+        page: chunk.metadata.page,
         chunkIndex: chunk.metadata.chunkIndex,
-        pageStart: chunk.metadata.pageStart,
-        pageEnd: chunk.metadata.pageEnd,
+        totalChunks: chunk.metadata.totalChunks,
       },
     }));
+
+    console.log(`Created ${vectors.length} vectors to store`);
+    console.log(`Sample vector IDs: ${vectors.slice(0, 3).map((v) => v.id)}`);
+    console.log(
+      `Sample text lengths: ${vectors
+        .slice(0, 3)
+        .map((v) => v.metadata.text.length)}`
+    );
 
     // Store in batches to avoid hitting rate limits
     const batchSize = 100;
     for (let i = 0; i < vectors.length; i += batchSize) {
       const batch = vectors.slice(i, i + batchSize);
-      await namespace.upsert(batch);
+      console.log(
+        `Storing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(
+          vectors.length / batchSize
+        )} (${batch.length} vectors)`
+      );
+
+      const result = await namespace.upsert(batch);
+      console.log(`Batch ${Math.floor(i / batchSize) + 1} result:`, result);
     }
+
+    // Add a delay to ensure embeddings are properly indexed
+    console.log(`Waiting 2 seconds for embeddings to be indexed...`);
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+
+    // Verify embeddings were stored correctly
+    await testEmbeddingsStorage(sessionId, vectors.length);
+
+    console.log(`=== EMBEDDINGS STORED SUCCESSFULLY ===\n`);
   } catch (error) {
     console.error("Error storing embeddings:", error);
     throw new Error("Failed to store embeddings");
+  }
+}
+
+/**
+ * Test if embeddings were stored correctly
+ */
+async function testEmbeddingsStorage(
+  sessionId: string,
+  expectedCount: number
+): Promise<void> {
+  try {
+    console.log(`\n=== TESTING EMBEDDINGS STORAGE ===`);
+    const namespace = createNamespace(sessionId);
+
+    // Try to fetch the first few chunks
+    const testIds = [
+      `${sessionId}:chunk:0`,
+      `${sessionId}:chunk:1`,
+      `${sessionId}:chunk:2`,
+    ];
+    const fetchResult = await namespace.fetch(testIds);
+
+    console.log(`Fetch test results:`, fetchResult);
+    console.log(
+      `Successfully fetched ${fetchResult.length} out of ${testIds.length} test vectors`
+    );
+
+    // Try a simple query to see if we can retrieve anything
+    const testQuery = await namespace.query({
+      vector: new Array(1536).fill(0.1), // Simple test vector for text-embedding-3-small
+      topK: 3,
+      includeMetadata: true,
+    });
+
+    console.log(`Simple query test results:`, testQuery);
+    console.log(`Query returned ${testQuery.length} results`);
+
+    console.log(`=== EMBEDDINGS STORAGE TEST COMPLETED ===\n`);
+  } catch (error) {
+    console.error("Error testing embeddings storage:", error);
   }
 }
 
@@ -95,7 +182,20 @@ export async function searchRelevantChunks(
   topK: number = 5
 ): Promise<VectorSearchResult[]> {
   try {
+    console.log(`\n=== SEARCHING RELEVANT CHUNKS ===`);
+    console.log(`Question: ${question}`);
+    console.log(`Session ID: ${sessionId}`);
+    console.log(`TopK: ${topK}`);
+
     const namespace = createNamespace(sessionId);
+
+    // First, let's check if we have any vectors in the namespace
+    try {
+      const testFetch = await namespace.fetch([`${sessionId}:chunk:0`]);
+      console.log(`Test fetch result for ${sessionId}:chunk:0:`, testFetch);
+    } catch (fetchError) {
+      console.log(`Test fetch error:`, fetchError);
+    }
 
     const response = await openai.embeddings.create({
       model: EMBEDDING_MODEL,
@@ -103,6 +203,9 @@ export async function searchRelevantChunks(
     });
 
     const embedding = response.data[0].embedding;
+    console.log(
+      `Generated embedding for question (length: ${embedding.length})`
+    );
 
     const results = await namespace.query({
       vector: embedding,
@@ -110,17 +213,33 @@ export async function searchRelevantChunks(
       includeMetadata: true,
     });
 
-    return results.map((result) => ({
+    console.log(`Raw query results:`, results);
+    console.log(`Number of results: ${results.length}`);
+
+    const mappedResults = results.map((result) => ({
       id: String(result.id),
       score: result.score || 0,
-      metadata: result.metadata || {
-        text: "",
-        filename: "Unknown",
-        chunkIndex: 0,
-        pageStart: 1,
-        pageEnd: 1,
+      metadata: {
+        text: result.metadata?.text || "",
+        filename: result.metadata?.filename || "Unknown",
+        page: result.metadata?.page || 1,
+        chunkIndex: result.metadata?.chunkIndex || 0,
+        totalChunks: result.metadata?.totalChunks || 1,
       },
     }));
+
+    console.log(
+      `Mapped results:`,
+      mappedResults.map((r) => ({
+        id: r.id,
+        score: r.score,
+        textLength: r.metadata.text.length,
+        filename: r.metadata.filename,
+      }))
+    );
+
+    console.log(`=== SEARCH COMPLETED ===\n`);
+    return mappedResults;
   } catch (error) {
     console.error("Error searching relevant chunks:", error);
     throw new Error("Failed to search for relevant content");
