@@ -8,10 +8,10 @@ export {
 // PDF processing functions
 export {
   createPDFChunks,
-  processChunkWithClaude,
-  splitTextIntoParagraphs,
-  answerQuestion,
+  processPDFChunk,
   fileToBase64,
+  getPDFInfo,
+  validatePDFFile,
 } from "./pdf-parser";
 
 // PDF splitting functions
@@ -22,6 +22,17 @@ export {
   shouldSplitPdf,
   type SplitOptions,
 } from "./pdf-splitter";
+
+// AI service functions
+export { processChunkWithClaude, answerQuestion } from "./ai-service";
+
+// Text processing functions
+export {
+  splitTextIntoParagraphs,
+  normalizeText,
+  extractMetadata,
+  formatText,
+} from "./text-processing";
 
 // Embeddings and vector operations
 export {

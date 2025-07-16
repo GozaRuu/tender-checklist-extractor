@@ -11,12 +11,9 @@ import {
   searchRelevantChunks,
   cleanupEmbeddings,
 } from "./embeddings";
-import {
-  createPDFChunks,
-  processChunkWithClaude,
-  splitTextIntoParagraphs,
-  answerQuestion,
-} from "./pdf-parser";
+import { createPDFChunks, processPDFChunk } from "./pdf-parser";
+import { answerQuestion } from "./ai-service";
+import { splitTextIntoParagraphs } from "./text-processing";
 
 /**
  * Generate a unique session ID for processing
@@ -192,7 +189,7 @@ export async function parseDocuments(
         );
 
         try {
-          const processedText = await processChunkWithClaude(file, chunk);
+          const processedText = await processPDFChunk(file, chunk);
 
           emitProgress(
             "embedding_prep",
@@ -373,7 +370,7 @@ export async function processSingleDocument(
     const chunks = await createPDFChunks(file);
     const chunk = chunks[0]; // Single chunk for entire document
 
-    const processedText = await processChunkWithClaude(file, chunk);
+    const processedText = await processPDFChunk(file, chunk);
     const paragraphs = splitTextIntoParagraphs(processedText);
 
     return {
