@@ -179,7 +179,7 @@ async function testEmbeddingsStorage(sessionId: string): Promise<void> {
 export async function searchRelevantChunks(
   question: string,
   sessionId: string,
-  topK: number = processingConfig.embeddings.defaultTopK
+  topK: number = 13
 ): Promise<VectorSearchResult[]> {
   try {
     console.log(`\n=== SEARCHING RELEVANT CHUNKS ===`);
@@ -229,7 +229,7 @@ export async function searchRelevantChunks(
     }));
 
     console.log(
-      `Mapped results:`,
+      `Mapped results before deduplication:`,
       mappedResults.map((r) => ({
         id: r.id,
         score: r.score,
@@ -238,12 +238,48 @@ export async function searchRelevantChunks(
       }))
     );
 
+    // Deduplicate results based on text content
+    const deduplicatedResults = deduplicateResults(mappedResults);
+
+    console.log(
+      `Mapped results after deduplication:`,
+      deduplicatedResults.map((r) => ({
+        id: r.id,
+        score: r.score,
+        textLength: r.metadata.text.length,
+        filename: r.metadata.filename,
+      }))
+    );
+
     console.log(`=== SEARCH COMPLETED ===\n`);
-    return mappedResults;
+    return deduplicatedResults;
   } catch (error) {
     console.error("Error searching relevant chunks:", error);
     throw new Error("Failed to search for relevant content");
   }
+}
+
+/**
+ * Remove duplicate results based on text content
+ * Keeps the result with the highest score when duplicates are found
+ */
+function deduplicateResults(
+  results: VectorSearchResult[]
+): VectorSearchResult[] {
+  const seen = new Map<string, VectorSearchResult>();
+
+  for (const result of results) {
+    const textKey = result.metadata.text.trim().toLowerCase();
+    const uniqueKey = `${result.metadata.filename}:${result.metadata.page}:${textKey}`;
+
+    // If we haven't seen this text before, or if this result has a higher score
+    if (!seen.has(uniqueKey) || result.score > seen.get(uniqueKey)!.score) {
+      seen.set(uniqueKey, result);
+    }
+  }
+
+  // Return deduplicated results sorted by score (highest first)
+  return Array.from(seen.values()).sort((a, b) => b.score - a.score);
 }
 
 /**

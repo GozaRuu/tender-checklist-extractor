@@ -102,13 +102,20 @@ export async function parseDocuments(
 
     emitProgress("starting", "Starting document processing...");
 
-    // Step 1: Create document chunks
-    const allChunks: DocumentChunk[] = [];
-    for (const file of files) {
+    // Step 1: Create document chunks in parallel
+    emitProgress(
+      "chunking",
+      `Creating chunks for ${files.length} files in parallel`
+    );
+
+    const chunkPromises = files.map(async (file) => {
       emitProgress("chunking", `Creating chunks for ${file.name}`, file.name);
       const chunks = await createPDFChunks(file);
-      allChunks.push(...chunks);
-    }
+      return chunks;
+    });
+
+    const allChunksArrays = await Promise.all(chunkPromises);
+    const allChunks: DocumentChunk[] = allChunksArrays.flat();
 
     console.log(`Created ${allChunks.length} document chunks`);
 

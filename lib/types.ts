@@ -37,6 +37,18 @@ export interface QuestionAnswer {
   };
 }
 
+// New type for file-specific results
+export interface FileResult {
+  filename: string;
+  answers: QuestionAnswer[];
+}
+
+// Updated main result structure
+export interface ProcessingResult {
+  fileResults: FileResult[];
+  debugInfo: DocumentExtractionDebug[];
+}
+
 // Embeddings types
 export interface EmbeddingsMetadata {
   text: string;

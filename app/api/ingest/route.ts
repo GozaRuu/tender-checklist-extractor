@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { parseDocuments } from "@/lib";
 
+export const maxDuration = 120;
+
 // Simple progress streaming interface
 interface ProgressUpdate {
   type: "progress" | "completion" | "error";
