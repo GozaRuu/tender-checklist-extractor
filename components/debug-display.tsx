@@ -12,10 +12,14 @@ import {
   Code,
   Database,
 } from "lucide-react";
-import type { QuestionAnswer } from "@/lib/types";
+import type {
+  QuestionAnswer,
+  DocumentExtractionDebug,
+  VectorSearchResult,
+} from "@/lib/types";
 
 interface DebugDisplayProps {
-  debugInfo: any[];
+  debugInfo: DocumentExtractionDebug[];
   results: QuestionAnswer[];
 }
 
@@ -206,7 +210,7 @@ export function DebugDisplay({ debugInfo, results }: DebugDisplayProps) {
                       </h4>
                       <div className="space-y-2">
                         {result.debugInfo.relevantChunks.map(
-                          (chunk: any, chunkIndex: number) => (
+                          (chunk: VectorSearchResult, chunkIndex: number) => (
                             <div
                               key={chunkIndex}
                               className="border rounded p-3 bg-green-50"

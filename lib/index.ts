@@ -52,3 +52,7 @@ export type {
   EmbeddingsMetadata,
   VectorSearchResult,
 } from "./types";
+
+// Configuration
+export { default as config } from "./config";
+export type { Config } from "./config";

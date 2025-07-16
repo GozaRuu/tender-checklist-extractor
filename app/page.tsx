@@ -8,11 +8,11 @@ import { DebugDisplay } from "@/components/debug-display";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CheckCircle, AlertCircle, ArrowLeft, Bug } from "lucide-react";
-import type { QuestionAnswer } from "@/lib/types";
+import type { QuestionAnswer, DocumentExtractionDebug } from "@/lib/types";
 
 export default function Home() {
   const [results, setResults] = useState<QuestionAnswer[]>([]);
-  const [debugInfo, setDebugInfo] = useState<any[]>([]);
+  const [debugInfo, setDebugInfo] = useState<DocumentExtractionDebug[]>([]);
   const [showResults, setShowResults] = useState(false);
   const [showTimeline, setShowTimeline] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
@@ -59,7 +59,10 @@ export default function Home() {
     }
   };
 
-  const handleProgressComplete = (completedData: any) => {
+  const handleProgressComplete = (completedData: {
+    results: QuestionAnswer[];
+    debugInfo: DocumentExtractionDebug[];
+  }) => {
     setResults(completedData.results || []);
     setDebugInfo(completedData.debugInfo || []);
     setShowResults(true);

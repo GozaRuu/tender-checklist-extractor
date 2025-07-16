@@ -11,7 +11,10 @@ interface ProgressUpdate {
   currentStep: number;
   totalSteps: number;
   timestamp: number;
-  results?: any; // Changed from any[] to any to handle new structure
+  results?: {
+    results: unknown[];
+    debugInfo: unknown[];
+  };
   error?: string;
 }
 
@@ -19,8 +22,8 @@ export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
 
-    // Extract session ID
-    const sessionId = formData.get("sessionId") as string;
+    // Session ID is generated internally by parseDocuments
+    // const sessionId = formData.get("sessionId") as string;
 
     // Extract questions from form data
     const questions: string[] = [];

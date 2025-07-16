@@ -1,9 +1,13 @@
 import { PDFDocument } from "pdf-lib";
+import config from "./config";
 
 export interface SplitOptions {
   chunkSize?: number; // how many pages per slice
   overlap?: number; // how many pages of overlap
 }
+
+// Get configuration
+const pdfConfig = config.getPdfConfig();
 
 /**
  * Splits the given PDF buffer into overlapping chunks.
@@ -16,7 +20,10 @@ export async function splitPdfChunks(
   buffer: ArrayBuffer,
   opts: SplitOptions = {}
 ): Promise<Buffer[]> {
-  const { chunkSize = 4, overlap = 1 } = opts;
+  const {
+    chunkSize = pdfConfig.splitting.defaultChunkSize,
+    overlap = pdfConfig.splitting.defaultOverlap,
+  } = opts;
   const srcDoc = await PDFDocument.load(buffer);
   const total = srcDoc.getPageCount();
   const slices: Buffer[] = [];
@@ -93,7 +100,7 @@ export function bufferToFile(buffer: Buffer, filename: string): File {
  */
 export function shouldSplitPdf(
   pageCount: number,
-  threshold: number = 3
+  threshold: number = pdfConfig.splitting.splitThreshold
 ): boolean {
   return pageCount > threshold;
 }

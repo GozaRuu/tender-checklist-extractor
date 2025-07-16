@@ -1,45 +1,20 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { DocumentChunk } from "./types";
+import config from "./config";
 
 // Initialize Anthropic client
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
 });
 
-// Configuration
-const MAX_TOKENS = 4000; // max tokens for Claude
+// Get configuration
+const aiConfig = config.getAiConfig();
 
 /**
  * Check if input is a condition (evaluates to true/false)
  */
 function isCondition(input: string): boolean {
-  const conditionKeywords = [
-    "ist",
-    "sind",
-    "hat",
-    "haben",
-    "kann",
-    "können",
-    "soll",
-    "sollen",
-    "muss",
-    "müssen",
-    "darf",
-    "dürfen",
-    "wird",
-    "werden",
-    "vor dem",
-    "nach dem",
-    "bis zum",
-    "ab dem",
-    "erlaubt",
-    "zulässig",
-    "möglich",
-    "erforderlich",
-    "notwendig",
-    "verfügbar",
-    "vorhanden",
-  ];
+  const conditionKeywords = aiConfig.claude.conditionKeywords;
 
   return conditionKeywords.some((keyword) =>
     input.toLowerCase().includes(keyword)
@@ -62,8 +37,8 @@ export async function processChunkWithClaude(
         : "";
 
     const response = await anthropic.messages.create({
-      model: "claude-3-5-sonnet-20241022",
-      max_tokens: MAX_TOKENS,
+      model: aiConfig.claude.model,
+      max_tokens: aiConfig.claude.maxTokensExtraction,
       messages: [
         {
           content: [
@@ -158,8 +133,8 @@ Frage: ${input}
 Bitte geben Sie eine detaillierte Antwort basierend auf dem bereitgestellten Kontext.`;
 
     const response = await anthropic.messages.create({
-      model: "claude-3-5-sonnet-20241022",
-      max_tokens: 1000,
+      model: aiConfig.claude.model,
+      max_tokens: aiConfig.claude.maxTokensAnswering,
       messages: [
         {
           content: [

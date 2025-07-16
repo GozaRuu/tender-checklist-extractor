@@ -44,7 +44,7 @@ export interface EmbeddingsMetadata {
   page: number;
   chunkIndex: number;
   totalChunks: number;
-  [key: string]: any; // Add index signature for compatibility
+  [key: string]: string | number | boolean | undefined; // Add index signature for compatibility
 }
 
 export interface VectorSearchResult {

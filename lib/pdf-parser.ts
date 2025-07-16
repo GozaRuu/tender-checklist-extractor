@@ -2,11 +2,11 @@ import type { DocumentChunk } from "./types";
 import {
   splitPdfChunks,
   getPdfPageCount,
-  bufferToFile,
   shouldSplitPdf,
   type SplitOptions,
 } from "./pdf-splitter";
 import { processChunkWithClaude } from "./ai-service";
+import config from "./config";
 
 /**
  * Convert File to base64 string
@@ -147,10 +147,14 @@ export function validatePDFFile(file: File): {
     return { isValid: false, error: "File must be a PDF" };
   }
 
-  // Check file size (50MB limit)
-  const maxSize = 50 * 1024 * 1024; // 50MB in bytes
+  // Check file size
+  const pdfConfig = config.getPdfConfig();
+  const maxSize = pdfConfig.validation.maxFileSizeBytes;
   if (file.size > maxSize) {
-    return { isValid: false, error: "File size must be less than 50MB" };
+    return {
+      isValid: false,
+      error: `File size must be less than ${pdfConfig.validation.maxFileSizeMB}MB`,
+    };
   }
 
   // Check filename

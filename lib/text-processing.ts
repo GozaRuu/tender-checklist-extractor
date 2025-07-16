@@ -1,3 +1,8 @@
+import config from "./config";
+
+// Get configuration
+const textConfig = config.getTextConfig();
+
 /**
  * Split text into paragraph-sized chunks for embedding
  */
@@ -6,7 +11,9 @@ export function splitTextIntoParagraphs(text: string): string[] {
   console.log(`Original text length: ${text.length}`);
 
   // Split by double newlines first, then by single newlines if paragraphs are too long
-  const paragraphs = text.split(/\n\s*\n/).filter((p) => p.trim().length > 0);
+  const paragraphs = text
+    .split(new RegExp(textConfig.processing.paragraphSplitRegex))
+    .filter((p) => p.trim().length > 0);
   console.log(`Initial paragraphs count: ${paragraphs.length}`);
   console.log(`Initial paragraph lengths: ${paragraphs.map((p) => p.length)}`);
 
@@ -14,17 +21,20 @@ export function splitTextIntoParagraphs(text: string): string[] {
 
   for (const paragraph of paragraphs) {
     // If paragraph is too long, split by sentences
-    if (paragraph.length > 1000) {
+    if (paragraph.length > textConfig.processing.maxParagraphLength) {
       console.log(
         `Paragraph too long (${paragraph.length} chars), splitting by sentences`
       );
       const sentences = paragraph
-        .split(/[.!?]+/)
+        .split(new RegExp(textConfig.processing.sentenceSplitRegex))
         .filter((s) => s.trim().length > 0);
       let currentChunk = "";
 
       for (const sentence of sentences) {
-        if (currentChunk.length + sentence.length > 1000) {
+        if (
+          currentChunk.length + sentence.length >
+          textConfig.processing.maxSentenceChunkLength
+        ) {
           if (currentChunk.trim()) {
             chunks.push(currentChunk.trim());
           }
@@ -86,30 +96,22 @@ export function extractMetadata(text: string): {
   };
 
   // Extract dates (German format)
-  const dateRegex = /\b\d{1,2}\.?\d{1,2}\.?\d{2,4}\b/g;
+  const dateRegex = new RegExp(textConfig.processing.dateRegex, "g");
   const dates = text.match(dateRegex) || [];
   metadata.dates = [...new Set(dates)];
 
   // Extract emails
-  const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+  const emailRegex = new RegExp(textConfig.processing.emailRegex, "g");
   const emails = text.match(emailRegex) || [];
   metadata.emails = [...new Set(emails)];
 
   // Extract phone numbers
-  const phoneRegex =
-    /(?:\+49|0)[1-9]\d{1,4}[\s\-]?\d{1,4}[\s\-]?\d{1,4}[\s\-]?\d{1,4}/g;
+  const phoneRegex = new RegExp(textConfig.processing.phoneRegex, "g");
   const phones = text.match(phoneRegex) || [];
   metadata.phones = [...new Set(phones)];
 
   // Extract deadlines (German keywords)
-  const deadlineKeywords = [
-    "frist",
-    "deadline",
-    "abgabe",
-    "einreichung",
-    "bis zum",
-    "spätestens",
-  ];
+  const deadlineKeywords = textConfig.processing.deadlineKeywords;
   const deadlines: string[] = [];
 
   deadlineKeywords.forEach((keyword) => {

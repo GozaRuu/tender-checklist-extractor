@@ -14,12 +14,20 @@ import {
 import { createPDFChunks, processPDFChunk } from "./pdf-parser";
 import { answerQuestion } from "./ai-service";
 import { splitTextIntoParagraphs } from "./text-processing";
+import config from "./config";
+
+// Get configuration
+const aiConfig = config.getAiConfig();
+const processingConfig = config.getProcessingConfig();
+const sessionConfig = config.getSessionConfig();
 
 /**
  * Generate a unique session ID for processing
  */
 function generateSessionId(): string {
-  return `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  return `${sessionConfig.namespacePrefix}${Date.now()}-${Math.random()
+    .toString(36)
+    .substr(2, sessionConfig.sessionIdLength)}`;
 }
 
 /**
@@ -37,33 +45,8 @@ type ProgressCallback = (
  * Detect if input is a question or condition
  */
 function detectQueryType(input: string): QueryType {
-  // German condition indicators
-  const conditionKeywords = [
-    "ist",
-    "sind",
-    "war",
-    "waren",
-    "wird",
-    "werden",
-    "kann",
-    "können",
-    "muss",
-    "müssen",
-    "sollte",
-    "sollten",
-    "darf",
-    "dürfen",
-    "hat",
-    "haben",
-    "gibt es",
-    "existiert",
-    "vor dem",
-    "nach dem",
-    "bis zum",
-    "ab dem",
-    "spätestens",
-    "frühestens",
-  ];
+  // Get condition keywords from config
+  const conditionKeywords = aiConfig.claude.conditionKeywords;
 
   const lowercaseInput = input.toLowerCase();
 
@@ -130,7 +113,10 @@ export async function parseDocuments(
     console.log(`Created ${allChunks.length} document chunks`);
 
     // Calculate actual total steps now that we know the chunk count
-    const actualTotalSteps = allChunks.length * 2 + queries.length + 2;
+    const actualTotalSteps =
+      allChunks.length * processingConfig.extraction.totalStepsMultiplier +
+      queries.length +
+      processingConfig.extraction.baseStepsCount;
 
     emitProgress(
       "chunks_created",
@@ -145,7 +131,7 @@ export async function parseDocuments(
     const debugInfo: DocumentExtractionDebug[] = [];
 
     // Process chunks in parallel with batching to avoid rate limits
-    const BATCH_SIZE = 3; // Process 3 chunks at a time
+    const BATCH_SIZE = processingConfig.extraction.batchSize;
     const chunkBatches = [];
 
     for (let i = 0; i < allChunks.length; i += BATCH_SIZE) {
@@ -390,7 +376,7 @@ export async function processSingleDocument(
 export async function findSimilarContent(
   query: string,
   sessionId: string,
-  topK: number = 3
+  topK: number = processingConfig.embeddings.defaultTopK
 ): Promise<{ text: string; filename: string; score: number }[]> {
   try {
     const results = await searchRelevantChunks(query, sessionId, topK);

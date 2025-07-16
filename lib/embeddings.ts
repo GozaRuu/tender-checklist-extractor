@@ -5,6 +5,7 @@ import type {
   ProcessedChunk,
   VectorSearchResult,
 } from "./types";
+import config from "./config";
 
 // Initialize OpenAI client
 const openai = new OpenAI({
@@ -17,8 +18,10 @@ const vectorIndex = new Index<EmbeddingsMetadata>({
   token: process.env.UPSTASH_VECTOR_REST_TOKEN!,
 });
 
-// Configuration
-const EMBEDDING_MODEL = "text-embedding-3-small";
+// Get configuration
+const aiConfig = config.getAiConfig();
+const processingConfig = config.getProcessingConfig();
+const sessionConfig = config.getSessionConfig();
 
 /**
  * Create namespace for document embeddings
@@ -36,7 +39,7 @@ export async function generateEmbeddings(
   try {
     console.log(`\n=== GENERATING EMBEDDINGS ===`);
     console.log(`Number of text chunks: ${textChunks.length}`);
-    console.log(`Model: ${EMBEDDING_MODEL}`);
+    console.log(`Model: ${aiConfig.openai.embeddingModel}`);
 
     const embeddings: number[][] = [];
 
@@ -50,7 +53,7 @@ export async function generateEmbeddings(
       );
 
       const response = await openai.embeddings.create({
-        model: EMBEDDING_MODEL,
+        model: aiConfig.openai.embeddingModel,
         input: chunk,
       });
 
@@ -106,7 +109,7 @@ export async function storeEmbeddings(
     );
 
     // Store in batches to avoid hitting rate limits
-    const batchSize = 100;
+    const batchSize = processingConfig.embeddings.batchSize;
     for (let i = 0; i < vectors.length; i += batchSize) {
       const batch = vectors.slice(i, i + batchSize);
       console.log(
@@ -124,7 +127,7 @@ export async function storeEmbeddings(
     await new Promise((resolve) => setTimeout(resolve, 2000));
 
     // Verify embeddings were stored correctly
-    await testEmbeddingsStorage(sessionId, vectors.length);
+    await testEmbeddingsStorage(sessionId);
 
     console.log(`=== EMBEDDINGS STORED SUCCESSFULLY ===\n`);
   } catch (error) {
@@ -136,10 +139,7 @@ export async function storeEmbeddings(
 /**
  * Test if embeddings were stored correctly
  */
-async function testEmbeddingsStorage(
-  sessionId: string,
-  expectedCount: number
-): Promise<void> {
+async function testEmbeddingsStorage(sessionId: string): Promise<void> {
   try {
     console.log(`\n=== TESTING EMBEDDINGS STORAGE ===`);
     const namespace = createNamespace(sessionId);
@@ -179,7 +179,7 @@ async function testEmbeddingsStorage(
 export async function searchRelevantChunks(
   question: string,
   sessionId: string,
-  topK: number = 5
+  topK: number = processingConfig.embeddings.defaultTopK
 ): Promise<VectorSearchResult[]> {
   try {
     console.log(`\n=== SEARCHING RELEVANT CHUNKS ===`);
@@ -198,7 +198,7 @@ export async function searchRelevantChunks(
     }
 
     const response = await openai.embeddings.create({
-      model: EMBEDDING_MODEL,
+      model: aiConfig.openai.embeddingModel,
       input: question,
     });
 

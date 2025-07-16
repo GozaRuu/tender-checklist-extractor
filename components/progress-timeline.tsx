@@ -10,7 +10,6 @@ import {
   Clock,
   FileText,
   Loader2,
-  Zap,
   Database,
   MessageSquare,
   Trash2,
@@ -25,13 +24,16 @@ interface ProgressEvent {
   currentStep: number;
   totalSteps: number;
   timestamp: number;
-  results?: any[];
+  results?: {
+    results: unknown[];
+    debugInfo: unknown[];
+  };
   error?: string;
 }
 
 interface ProgressTimelineProps {
   formData: FormData;
-  onComplete: (results: any) => void; // Changed from any[] to any
+  onComplete: (results: { results: unknown[]; debugInfo: unknown[] }) => void;
   onError: (error: string) => void;
 }
 

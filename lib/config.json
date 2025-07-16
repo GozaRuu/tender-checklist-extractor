@@ -1,0 +1,108 @@
+{
+  "ai": {
+    "claude": {
+      "model": "claude-3-5-sonnet-20241022",
+      "maxTokensExtraction": 4000,
+      "maxTokensAnswering": 1000,
+      "conditionKeywords": [
+        "ist",
+        "sind",
+        "hat",
+        "haben",
+        "kann",
+        "können",
+        "soll",
+        "sollen",
+        "muss",
+        "müssen",
+        "darf",
+        "dürfen",
+        "wird",
+        "werden",
+        "vor dem",
+        "nach dem",
+        "bis zum",
+        "ab dem",
+        "erlaubt",
+        "zulässig",
+        "möglich",
+        "erforderlich",
+        "notwendig",
+        "verfügbar",
+        "vorhanden"
+      ]
+    },
+    "openai": {
+      "embeddingModel": "text-embedding-3-small",
+      "embeddingDimensions": 1536
+    }
+  },
+  "processing": {
+    "extraction": {
+      "batchSize": 6,
+      "totalStepsMultiplier": 2,
+      "baseStepsCount": 2
+    },
+    "embeddings": {
+      "batchSize": 100,
+      "defaultTopK": 5,
+      "indexingDelayMs": 2000
+    },
+    "retry": {
+      "maxRetries": 3,
+      "baseDelayMs": 1000,
+      "maxDelayMs": 10000
+    }
+  },
+  "pdf": {
+    "validation": {
+      "maxFileSizeBytes": 52428800,
+      "maxFileSizeMB": 50,
+      "allowedMimeTypes": ["application/pdf"],
+      "allowedExtensions": [".pdf"]
+    },
+    "splitting": {
+      "defaultChunkSize": 4,
+      "defaultOverlap": 1,
+      "splitThreshold": 3,
+      "minPagesPerChunk": 1,
+      "maxPagesPerChunk": 10
+    }
+  },
+  "text": {
+    "processing": {
+      "maxParagraphLength": 1000,
+      "maxSentenceChunkLength": 1000,
+      "minTextLength": 10,
+      "paragraphSplitRegex": "\\n\\s*\\n",
+      "sentenceSplitRegex": "[.!?]+",
+      "dateRegex": "\\b\\d{1,2}\\.?\\d{1,2}\\.?\\d{2,4}\\b",
+      "emailRegex": "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}",
+      "phoneRegex": "(?:\\+49|0)[1-9]\\d{1,4}[\\s\\-]?\\d{1,4}[\\s\\-]?\\d{1,4}[\\s\\-]?\\d{1,4}",
+      "deadlineKeywords": [
+        "frist",
+        "deadline",
+        "abgabe",
+        "einreichung",
+        "bis zum",
+        "spätestens"
+      ]
+    }
+  },
+  "session": {
+    "sessionIdLength": 9,
+    "namespacePrefix": "session-",
+    "cleanupAfterProcessing": true
+  },
+  "logging": {
+    "enableDebugLogs": true,
+    "enablePerformanceLogs": true,
+    "logLevel": "info"
+  },
+  "limits": {
+    "maxQuestionsPerSession": 50,
+    "maxFilesPerSession": 10,
+    "maxProcessingTimeMs": 300000,
+    "maxTotalFileSize": 500000000
+  }
+} 
