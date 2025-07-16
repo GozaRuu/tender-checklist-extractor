@@ -1,9 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { parseDocuments } from "@/lib";
 
+// Simple progress streaming interface
+interface ProgressUpdate {
+  type: "progress" | "completion" | "error";
+  step: string;
+  message: string;
+  filename?: string;
+  chunkId?: string;
+  currentStep: number;
+  totalSteps: number;
+  timestamp: number;
+  results?: any[];
+  error?: string;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
+
+    // Extract session ID
+    const sessionId = formData.get("sessionId") as string;
 
     // Extract questions from form data
     const questions: string[] = [];
@@ -43,25 +60,91 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Process documents
-    console.log(
-      `Processing ${files.length} files with ${questions.length} questions`
-    );
-    const results = await parseDocuments(files, questions);
+    // Calculate total steps
+    const totalSteps = files.length + files.length + 1 + questions.length + 1;
 
-    return NextResponse.json({
-      success: true,
-      results,
-      filesProcessed: files.length,
-      questionsAnswered: questions.length,
+    // Create streaming response
+    const encoder = new TextEncoder();
+    let currentStep = 0;
+
+    const stream = new ReadableStream({
+      async start(controller) {
+        try {
+          // Simple progress callback
+          const onProgress = (
+            step: string,
+            message: string,
+            filename?: string,
+            chunkId?: string
+          ) => {
+            currentStep++;
+            const update: ProgressUpdate = {
+              type: "progress",
+              step,
+              message,
+              filename,
+              chunkId,
+              currentStep,
+              totalSteps,
+              timestamp: Date.now(),
+            };
+
+            const chunk = encoder.encode(JSON.stringify(update) + "\n");
+            controller.enqueue(chunk);
+          };
+
+          // Process documents with progress callback
+          console.log(
+            `Processing ${files.length} files with ${questions.length} questions`
+          );
+
+          const results = await parseDocuments(files, questions, onProgress);
+
+          // Send completion update
+          const completionUpdate: ProgressUpdate = {
+            type: "completion",
+            step: "completed",
+            message: "Processing completed successfully",
+            currentStep: totalSteps,
+            totalSteps,
+            timestamp: Date.now(),
+            results,
+          };
+
+          const chunk = encoder.encode(JSON.stringify(completionUpdate) + "\n");
+          controller.enqueue(chunk);
+          controller.close();
+        } catch (error) {
+          console.error("Error processing documents:", error);
+
+          const errorUpdate: ProgressUpdate = {
+            type: "error",
+            step: "error",
+            message: "Processing failed",
+            currentStep: currentStep,
+            totalSteps,
+            timestamp: Date.now(),
+            error: error instanceof Error ? error.message : "Unknown error",
+          };
+
+          const chunk = encoder.encode(JSON.stringify(errorUpdate) + "\n");
+          controller.enqueue(chunk);
+          controller.close();
+        }
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/plain",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
     });
   } catch (error) {
-    console.error("Error processing documents:", error);
+    console.error("Error in ingest route:", error);
     return NextResponse.json(
-      {
-        error: "Failed to process documents",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
+      { error: "Internal server error" },
       { status: 500 }
     );
   }

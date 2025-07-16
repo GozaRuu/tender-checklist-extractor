@@ -20,11 +20,22 @@ function generateSessionId(): string {
 }
 
 /**
+ * Simple progress callback type
+ */
+type ProgressCallback = (
+  step: string,
+  message: string,
+  filename?: string,
+  chunkId?: string
+) => void;
+
+/**
  * Main function to process documents and answer questions
  */
 export async function parseDocuments(
   files: File[],
-  questions: string[]
+  questions: string[],
+  onProgress?: ProgressCallback
 ): Promise<QuestionAnswer[]> {
   try {
     console.log("Starting document processing...");
@@ -33,14 +44,32 @@ export async function parseDocuments(
     const sessionId = generateSessionId();
     console.log(`Session ID: ${sessionId}`);
 
+    // Helper function to emit progress
+    const emitProgress = (
+      step: string,
+      message: string,
+      filename?: string,
+      chunkId?: string
+    ) => {
+      console.log(`[${step}] ${message}`, filename, chunkId);
+      onProgress?.(step, message, filename, chunkId);
+    };
+
+    emitProgress("starting", "Starting document processing...");
+
     // Step 1: Create document chunks
     const allChunks: DocumentChunk[] = [];
     for (const file of files) {
+      emitProgress("chunking", `Creating chunks for ${file.name}`, file.name);
       const chunks = await createPDFChunks(file);
       allChunks.push(...chunks);
     }
 
     console.log(`Created ${allChunks.length} document chunks`);
+    emitProgress(
+      "chunks_created",
+      `Created ${allChunks.length} document chunks`
+    );
 
     // Step 2: Process chunks with Claude
     const processedChunks: ProcessedChunk[] = [];
@@ -50,13 +79,32 @@ export async function parseDocuments(
 
       if (!file) {
         console.error(`File not found for chunk: ${chunk.id}`);
+        emitProgress(
+          "error",
+          `File not found for chunk: ${chunk.id}`,
+          chunk.metadata.filename,
+          chunk.id
+        );
         continue;
       }
 
       console.log(`Processing chunk ${i + 1}/${allChunks.length}: ${chunk.id}`);
+      emitProgress(
+        "processing",
+        `Processing chunk ${i + 1}/${allChunks.length}`,
+        file.name,
+        chunk.id
+      );
 
       try {
         const processedText = await processChunkWithClaude(file, chunk);
+
+        emitProgress(
+          "embedding_prep",
+          `Preparing embeddings for ${chunk.id}`,
+          file.name,
+          chunk.id
+        );
 
         // Split into paragraphs for embedding
         const paragraphs = splitTextIntoParagraphs(processedText);
@@ -71,22 +119,51 @@ export async function parseDocuments(
             metadata: chunk.metadata,
           });
         });
+
+        emitProgress(
+          "chunk_processed",
+          `Processed chunk ${chunk.id}`,
+          file.name,
+          chunk.id
+        );
       } catch (error) {
         console.error(`Error processing chunk ${chunk.id}:`, error);
+        emitProgress(
+          "error",
+          `Error processing chunk: ${
+            error instanceof Error ? error.message : "Unknown error"
+          }`,
+          file.name,
+          chunk.id
+        );
         // Continue with other chunks
       }
     }
 
     console.log(`Created ${processedChunks.length} processed chunks`);
+    emitProgress(
+      "embeddings_ready",
+      `Created ${processedChunks.length} processed chunks`
+    );
 
     // Step 3: Store embeddings
+    emitProgress(
+      "storing_embeddings",
+      "Storing embeddings in vector database..."
+    );
     await storeEmbeddings(processedChunks, sessionId);
     console.log("Embeddings stored successfully");
+    emitProgress("embeddings_stored", "Embeddings stored successfully");
 
     // Step 4: Answer questions
     const results: QuestionAnswer[] = [];
-    for (const question of questions) {
+    for (let i = 0; i < questions.length; i++) {
+      const question = questions[i];
       console.log(`Answering question: ${question}`);
+      emitProgress(
+        "answering",
+        `Answering question ${i + 1}/${questions.length}: ${question}`
+      );
 
       try {
         const relevantChunks = await searchRelevantChunks(question, sessionId);
@@ -104,8 +181,16 @@ export async function parseDocuments(
             (chunk) => chunk.metadata?.filename || "Unknown"
           ),
         });
+
+        emitProgress("question_answered", `Answered question: ${question}`);
       } catch (error) {
         console.error(`Error answering question "${question}":`, error);
+        emitProgress(
+          "error",
+          `Error answering question: ${
+            error instanceof Error ? error.message : "Unknown error"
+          }`
+        );
         results.push({
           question,
           answer:
@@ -117,6 +202,7 @@ export async function parseDocuments(
     }
 
     console.log("Document processing completed");
+    emitProgress("cleaning_up", "Cleaning up temporary data...");
 
     // Clean up embeddings after processing
     await cleanupEmbeddings(sessionId);
@@ -124,6 +210,12 @@ export async function parseDocuments(
     return results;
   } catch (error) {
     console.error("Error in parseDocuments:", error);
+    onProgress?.(
+      "error",
+      `Processing failed: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`
+    );
     throw new Error("Failed to process documents");
   }
 }

@@ -10,6 +10,7 @@ A Next.js application that extracts specific information from tender documents u
 - 🔍 **Vector Search**: Semantic search through document content using Upstash Vector
 - 📊 **Confidence Scoring**: Get confidence ratings for each answer
 - 📋 **Source Attribution**: See which documents provided the information
+- ⚡ **Real-time Progress**: Server-sent events with timeline showing processing progress
 - 🎨 **Modern UI**: Built with shadcn/ui components and Tailwind CSS
 
 ## Architecture
@@ -17,6 +18,7 @@ A Next.js application that extracts specific information from tender documents u
 ### Frontend (Next.js + TypeScript + Shadcn/UI)
 
 - **Upload Form**: Dynamic question inputs and multi-PDF file selector
+- **Progress Timeline**: Real-time processing updates with server-sent events
 - **Results Display**: Structured question-answer pairs with confidence scores
 - **Responsive Design**: Works on desktop and mobile devices
 
@@ -165,13 +167,16 @@ The app can be deployed on any platform that supports Next.js:
 ```
 tender-checklist-extractor/
 ├── app/
-│   ├── api/ingest/          # API endpoint for document processing
+│   ├── api/
+│   │   ├── ingest/          # API endpoint for document processing
+│   │   └── progress/        # Server-sent events for progress tracking
 │   ├── globals.css          # Global styles
 │   ├── layout.tsx           # Root layout
 │   └── page.tsx             # Main page
 ├── components/
 │   ├── ui/                  # Shadcn/UI components
 │   ├── upload-form.tsx      # Upload form with dynamic questions
+│   ├── progress-timeline.tsx # Real-time progress timeline
 │   └── results-display.tsx  # Results display component
 ├── lib/
 │   ├── index.ts             # Main exports from lib modules
@@ -179,6 +184,7 @@ tender-checklist-extractor/
 │   ├── extraction.ts        # Main document processing orchestration
 │   ├── pdf-parser.ts        # PDF processing with Claude AI
 │   ├── embeddings.ts        # Vector embeddings and search
+│   ├── progress-manager.ts  # Progress tracking and SSE management
 │   └── utils.ts             # Utility functions
 └── public/                  # Static assets
 ```
@@ -200,6 +206,10 @@ The `lib/` directory is organized into focused modules:
   - Document processing workflow
   - Question answering pipeline
   - Session management and cleanup
+- **`progress-manager.ts`**: Progress tracking and SSE
+  - Real-time progress events
+  - Server-sent events management
+  - Session-based progress tracking
 - **`index.ts`**: Clean exports from all modules
 
 ## Contributing

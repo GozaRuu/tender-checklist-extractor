@@ -1,13 +1,12 @@
-// Shared types for the tender document extraction system
-
+// Core document processing types
 export interface DocumentChunk {
   id: string;
-  content: string;
+  text: string;
   metadata: {
     filename: string;
+    page: number;
     chunkIndex: number;
-    pageStart: number;
-    pageEnd: number;
+    totalChunks: number;
   };
 }
 
@@ -15,12 +14,7 @@ export interface ProcessedChunk {
   id: string;
   text: string;
   embedding: number[];
-  metadata: {
-    filename: string;
-    chunkIndex: number;
-    pageStart: number;
-    pageEnd: number;
-  };
+  metadata: DocumentChunk["metadata"];
 }
 
 export interface QuestionAnswer {
@@ -30,13 +24,14 @@ export interface QuestionAnswer {
   sources: string[];
 }
 
-export type EmbeddingsMetadata = {
+// Embeddings types
+export interface EmbeddingsMetadata {
   text: string;
   filename: string;
+  page: number;
   chunkIndex: number;
-  pageStart: number;
-  pageEnd: number;
-};
+  totalChunks: number;
+}
 
 export interface VectorSearchResult {
   id: string;

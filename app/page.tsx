@@ -2,110 +2,156 @@
 
 import { useState } from "react";
 import { UploadForm } from "@/components/upload-form";
+import { ProgressTimeline } from "@/components/progress-timeline";
 import { ResultsDisplay } from "@/components/results-display";
-
-interface QuestionAnswer {
-  question: string;
-  answer: string;
-  confidence: number;
-  sources: string[];
-}
-
-interface FormData {
-  questions: { question: string }[];
-  files: File[];
-}
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CheckCircle, AlertCircle, ArrowLeft } from "lucide-react";
+import type { QuestionAnswer } from "@/lib/types";
 
 export default function Home() {
-  const [isLoading, setIsLoading] = useState(false);
   const [results, setResults] = useState<QuestionAnswer[]>([]);
-  const [filesProcessed, setFilesProcessed] = useState(0);
-  const [questionsAnswered, setQuestionsAnswered] = useState(0);
   const [showResults, setShowResults] = useState(false);
+  const [showTimeline, setShowTimeline] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string>("");
+  const [formData, setFormData] = useState<FormData | null>(null);
 
-  const handleFormSubmit = async (data: FormData) => {
+  const handleFormSubmit = async (data: {
+    questions: { question: string }[];
+    files: File[];
+  }) => {
     setIsLoading(true);
+    setError("");
+    setResults([]);
     setShowResults(false);
 
     try {
-      const formData = new FormData();
+      const newFormData = new FormData();
+
+      // Add session ID
+      newFormData.append("sessionId", `session-${Date.now()}`);
 
       // Add questions to form data
       data.questions.forEach((q, index) => {
-        formData.append(`questions.${index}.question`, q.question);
+        newFormData.append(`questions.${index}.question`, q.question);
       });
 
       // Add files to form data
       data.files.forEach((file) => {
-        formData.append("files", file);
+        newFormData.append("files", file);
       });
 
-      const response = await fetch("/api/ingest", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to process documents");
-      }
-
-      const result = await response.json();
-
-      setResults(result.results);
-      setFilesProcessed(result.filesProcessed);
-      setQuestionsAnswered(result.questionsAnswered);
-      setShowResults(true);
+      // Set form data and show timeline
+      setFormData(newFormData);
+      setShowTimeline(true);
     } catch (error) {
-      console.error("Error processing documents:", error);
-      // Show error state
-      setResults([]);
-      setShowResults(true);
-    } finally {
+      console.error("Error preparing form data:", error);
+      setError(
+        error instanceof Error ? error.message : "Failed to prepare form data"
+      );
       setIsLoading(false);
     }
+  };
+
+  const handleProgressComplete = (completedResults: QuestionAnswer[]) => {
+    setResults(completedResults);
+    setShowResults(true);
+    setShowTimeline(false);
+    setIsLoading(false);
+  };
+
+  const handleProgressError = (errorMessage: string) => {
+    setError(errorMessage);
+    setShowTimeline(false);
+    setIsLoading(false);
+  };
+
+  const handleStartNew = () => {
+    setResults([]);
+    setShowResults(false);
+    setShowTimeline(false);
+    setError("");
+    setFormData(null);
+    setIsLoading(false);
   };
 
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="container mx-auto px-4 py-8">
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-6xl mx-auto">
           {/* Header */}
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              Tender Document Extractor
+            <h1 className="text-4xl font-bold text-gray-900 mb-2">
+              Tender Document Analyzer
             </h1>
-            <p className="text-gray-600 max-w-2xl mx-auto">
-              Upload PDF tender documents and ask questions to extract specific
-              information. Our AI will analyze your documents and provide
-              detailed answers to help you understand requirements, deadlines,
-              and evaluation criteria.
+            <p className="text-lg text-gray-600">
+              Upload PDF documents and get AI-powered answers to your questions
             </p>
           </div>
 
-          {/* Main Content */}
-          <div className="space-y-8">
-            {!showResults && (
-              <UploadForm onSubmit={handleFormSubmit} isLoading={isLoading} />
-            )}
+          {/* Error Alert */}
+          {error && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+              <div className="flex items-center">
+                <AlertCircle className="h-4 w-4 text-red-600 mr-2" />
+                <div className="text-sm text-red-800">{error}</div>
+              </div>
+            </div>
+          )}
 
-            {(isLoading || showResults) && (
-              <ResultsDisplay
-                results={results}
-                isLoading={isLoading}
-                filesProcessed={filesProcessed}
-                questionsAnswered={questionsAnswered}
+          {/* Upload Form */}
+          {!showTimeline && !showResults && (
+            <Card className="mb-8">
+              <CardHeader>
+                <CardTitle>Upload Documents & Questions</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <UploadForm onSubmit={handleFormSubmit} isLoading={isLoading} />
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Processing Timeline */}
+          {showTimeline && formData && (
+            <div className="mb-8">
+              <ProgressTimeline
+                formData={formData}
+                onComplete={handleProgressComplete}
+                onError={handleProgressError}
               />
-            )}
-          </div>
+            </div>
+          )}
 
-          {/* Footer */}
-          <footer className="mt-16 text-center text-sm text-gray-500">
-            <p>
-              Powered by Claude AI and OpenAI. Your documents are processed
-              securely and not stored permanently.
-            </p>
-          </footer>
+          {/* Results */}
+          {showResults && results.length > 0 && (
+            <div className="mb-8">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-2xl font-bold text-gray-900">
+                  Analysis Results
+                </h2>
+                <Button
+                  onClick={handleStartNew}
+                  variant="outline"
+                  className="flex items-center gap-2"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  Start New Analysis
+                </Button>
+              </div>
+
+              <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+                <div className="flex items-center">
+                  <CheckCircle className="h-4 w-4 text-green-600 mr-2" />
+                  <div className="text-sm text-green-800">
+                    Successfully processed and analyzed your documents!
+                  </div>
+                </div>
+              </div>
+
+              <ResultsDisplay results={results} />
+            </div>
+          )}
         </div>
       </div>
     </div>
