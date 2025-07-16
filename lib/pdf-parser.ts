@@ -1,5 +1,12 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { DocumentChunk } from "./types";
+import {
+  splitPdfChunks,
+  getPdfPageCount,
+  bufferToFile,
+  shouldSplitPdf,
+  type SplitOptions,
+} from "./pdf-splitter";
 
 // Initialize Anthropic client
 const anthropic = new Anthropic({
@@ -20,26 +27,66 @@ export async function fileToBase64(file: File): Promise<string> {
 
 /**
  * Create document chunks for processing
- * Since we're using Claude's PDF processing, we'll process the entire document
+ * For large PDFs, split them into smaller chunks to avoid Claude's limits
  */
-export async function createPDFChunks(file: File): Promise<DocumentChunk[]> {
+export async function createPDFChunks(
+  file: File,
+  splitOptions: SplitOptions = {}
+): Promise<DocumentChunk[]> {
   const chunks: DocumentChunk[] = [];
 
   try {
-    // For simplicity, we'll process the entire document as one chunk
-    // Claude can handle the full PDF and we'll let it determine the structure
-    const chunkId = `${file.name}-chunk-0`;
+    console.log(`\n=== PROCESSING PDF: ${file.name} ===`);
 
-    chunks.push({
-      id: chunkId,
-      text: "", // Will be filled by Claude processing
-      metadata: {
-        filename: file.name,
-        page: 1,
-        chunkIndex: 0,
-        totalChunks: 1,
-      },
-    });
+    // Get PDF buffer and page count
+    const arrayBuffer = await file.arrayBuffer();
+    const pageCount = await getPdfPageCount(arrayBuffer);
+
+    console.log(`PDF has ${pageCount} pages`);
+
+    // Determine if we need to split the PDF
+    const needsSplitting = shouldSplitPdf(pageCount);
+    console.log(`PDF splitting needed: ${needsSplitting}`);
+
+    if (needsSplitting) {
+      // Split the PDF into smaller chunks
+      const splitBuffers = await splitPdfChunks(arrayBuffer, splitOptions);
+
+      console.log(`Split PDF into ${splitBuffers.length} chunks`);
+
+      // Create DocumentChunk objects for each split
+      splitBuffers.forEach((buffer, index) => {
+        const chunkId = `${file.name}-chunk-${index}`;
+        chunks.push({
+          id: chunkId,
+          text: "", // Will be filled by Claude processing
+          metadata: {
+            filename: file.name,
+            page: index + 1, // Approximate page number
+            chunkIndex: index,
+            totalChunks: splitBuffers.length,
+            pdfBuffer: buffer, // Store the PDF chunk buffer
+          },
+        });
+      });
+    } else {
+      // Process the entire PDF as one chunk
+      const chunkId = `${file.name}-chunk-0`;
+      chunks.push({
+        id: chunkId,
+        text: "", // Will be filled by Claude processing
+        metadata: {
+          filename: file.name,
+          page: 1,
+          chunkIndex: 0,
+          totalChunks: 1,
+          pdfBuffer: Buffer.from(arrayBuffer), // Store the entire PDF buffer
+        },
+      });
+    }
+
+    console.log(`Created ${chunks.length} document chunks for ${file.name}`);
+    console.log(`=== PDF PROCESSING COMPLETED ===\n`);
 
     return chunks;
   } catch (error) {
@@ -56,7 +103,10 @@ export async function processChunkWithClaude(
   chunk: DocumentChunk
 ): Promise<string> {
   try {
-    const pdfBase64 = await fileToBase64(file);
+    // Use the stored PDF buffer if available, otherwise use the original file
+    const pdfBase64 = chunk.metadata.pdfBuffer
+      ? chunk.metadata.pdfBuffer.toString("base64")
+      : await fileToBase64(file);
 
     const response = await anthropic.messages.create({
       model: "claude-3-5-sonnet-20241022",
@@ -75,7 +125,13 @@ export async function processChunkWithClaude(
             },
             {
               type: "text",
-              text: `Bitte extrahieren und strukturieren Sie den Textinhalt aus diesem deutschen Ausschreibungsdokument. Konzentrieren Sie sich auf:
+              text: `Bitte extrahieren und strukturieren Sie den Textinhalt aus diesem deutschen Ausschreibungsdokument${
+                chunk.metadata.totalChunks > 1
+                  ? ` (Chunk ${chunk.metadata.chunkIndex + 1} von ${
+                      chunk.metadata.totalChunks
+                    })`
+                  : ""
+              }. Konzentrieren Sie sich auf:
               
               1. Wichtige Informationen und Anforderungen
               2. Technische Spezifikationen
@@ -95,7 +151,14 @@ export async function processChunkWithClaude(
               - Formale Anforderungen für die Angebotseinreichung
               - Bewertungskriterien
               - Kontaktinformationen
-              - Technische Spezifikationen`,
+              - Technische Spezifikationen
+              
+              ${
+                chunk.metadata.totalChunks > 1
+                  ? `
+              HINWEIS: Dies ist ein Teil eines mehrteiligen Dokuments. Bitte extrahieren Sie alle verfügbaren Informationen aus diesem Abschnitt und weisen Sie darauf hin, wenn Informationen möglicherweise in anderen Teilen des Dokuments enthalten sind.`
+                  : ""
+              }`,
             },
           ],
           role: "user",

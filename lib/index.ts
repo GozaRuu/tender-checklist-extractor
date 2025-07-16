@@ -14,6 +14,15 @@ export {
   fileToBase64,
 } from "./pdf-parser";
 
+// PDF splitting functions
+export {
+  splitPdfChunks,
+  getPdfPageCount,
+  bufferToFile,
+  shouldSplitPdf,
+  type SplitOptions,
+} from "./pdf-splitter";
+
 // Embeddings and vector operations
 export {
   generateEmbeddings,

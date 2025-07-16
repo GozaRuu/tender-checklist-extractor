@@ -7,6 +7,7 @@ export interface DocumentChunk {
     page: number;
     chunkIndex: number;
     totalChunks: number;
+    pdfBuffer?: Buffer; // For storing split PDF chunks
   };
 }
 

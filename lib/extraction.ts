@@ -32,7 +32,8 @@ type ProgressCallback = (
   step: string,
   message: string,
   filename?: string,
-  chunkId?: string
+  chunkId?: string,
+  updateTotalSteps?: number
 ) => void;
 
 /**
@@ -112,10 +113,11 @@ export async function parseDocuments(
       step: string,
       message: string,
       filename?: string,
-      chunkId?: string
+      chunkId?: string,
+      updateTotalSteps?: number
     ) => {
       console.log(`[${step}] ${message}`, filename, chunkId);
-      onProgress?.(step, message, filename, chunkId);
+      onProgress?.(step, message, filename, chunkId, updateTotalSteps);
     };
 
     emitProgress("starting", "Starting document processing...");
@@ -129,87 +131,127 @@ export async function parseDocuments(
     }
 
     console.log(`Created ${allChunks.length} document chunks`);
+
+    // Calculate actual total steps now that we know the chunk count
+    const actualTotalSteps = allChunks.length * 2 + queries.length + 2;
+
     emitProgress(
       "chunks_created",
-      `Created ${allChunks.length} document chunks`
+      `Created ${allChunks.length} document chunks`,
+      undefined,
+      undefined,
+      actualTotalSteps
     );
 
     // Step 2: Process chunks with Claude and collect debug info
     const processedChunks: ProcessedChunk[] = [];
     const debugInfo: DocumentExtractionDebug[] = [];
 
-    for (let i = 0; i < allChunks.length; i++) {
-      const chunk = allChunks[i];
-      const file = files.find((f) => f.name === chunk.metadata.filename);
+    // Process chunks in parallel with batching to avoid rate limits
+    const BATCH_SIZE = 3; // Process 3 chunks at a time
+    const chunkBatches = [];
 
-      if (!file) {
-        console.error(`File not found for chunk: ${chunk.id}`);
-        emitProgress(
-          "error",
-          `File not found for chunk: ${chunk.id}`,
-          chunk.metadata.filename,
-          chunk.id
-        );
-        continue;
-      }
+    for (let i = 0; i < allChunks.length; i += BATCH_SIZE) {
+      chunkBatches.push(allChunks.slice(i, i + BATCH_SIZE));
+    }
 
-      console.log(`Processing chunk ${i + 1}/${allChunks.length}: ${chunk.id}`);
-      emitProgress(
-        "processing",
-        `Processing chunk ${i + 1}/${allChunks.length}`,
-        file.name,
-        chunk.id
+    for (let batchIndex = 0; batchIndex < chunkBatches.length; batchIndex++) {
+      const batch = chunkBatches[batchIndex];
+
+      console.log(
+        `Processing batch ${batchIndex + 1}/${chunkBatches.length} with ${
+          batch.length
+        } chunks`
       );
 
-      try {
-        const processedText = await processChunkWithClaude(file, chunk);
+      const batchPromises = batch.map(async (chunk, indexInBatch) => {
+        const overallIndex = batchIndex * BATCH_SIZE + indexInBatch;
+        const file = files.find((f) => f.name === chunk.metadata.filename);
 
+        if (!file) {
+          console.error(`File not found for chunk: ${chunk.id}`);
+          emitProgress(
+            "error",
+            `File not found for chunk: ${chunk.id}`,
+            chunk.metadata.filename,
+            chunk.id
+          );
+          return null;
+        }
+
+        console.log(
+          `Processing chunk ${overallIndex + 1}/${allChunks.length}: ${
+            chunk.id
+          }`
+        );
         emitProgress(
-          "embedding_prep",
-          `Preparing embeddings for ${chunk.id}`,
+          "processing",
+          `Processing chunk ${overallIndex + 1}/${allChunks.length}`,
           file.name,
           chunk.id
         );
 
-        // Split into paragraphs for embedding
-        const paragraphs = splitTextIntoParagraphs(processedText);
-        const embeddings = await generateEmbeddings(paragraphs);
+        try {
+          const processedText = await processChunkWithClaude(file, chunk);
 
-        // Store debug info
-        debugInfo.push({
-          filename: file.name,
-          rawExtraction: processedText,
-          chunks: paragraphs,
-        });
+          emitProgress(
+            "embedding_prep",
+            `Preparing embeddings for ${chunk.id}`,
+            file.name,
+            chunk.id
+          );
 
-        // Create processed chunks
-        paragraphs.forEach((paragraph, idx) => {
-          processedChunks.push({
+          // Split into paragraphs for embedding
+          const paragraphs = splitTextIntoParagraphs(processedText);
+          const embeddings = await generateEmbeddings(paragraphs);
+
+          // Store debug info
+          const debugEntry = {
+            filename: file.name,
+            rawExtraction: processedText,
+            chunks: paragraphs,
+          };
+
+          // Create processed chunks for this chunk
+          const chunkProcessedChunks = paragraphs.map((paragraph, idx) => ({
             id: `${chunk.id}-paragraph-${idx}`,
             text: paragraph,
             embedding: embeddings[idx],
             metadata: chunk.metadata,
-          });
-        });
+          }));
 
-        emitProgress(
-          "chunk_processed",
-          `Processed chunk ${chunk.id}`,
-          file.name,
-          chunk.id
-        );
-      } catch (error) {
-        console.error(`Error processing chunk ${chunk.id}:`, error);
-        emitProgress(
-          "error",
-          `Error processing chunk: ${
-            error instanceof Error ? error.message : "Unknown error"
-          }`,
-          file.name,
-          chunk.id
-        );
-        // Continue with other chunks
-      }
+          emitProgress(
+            "chunk_processed",
+            `Processed chunk ${chunk.id}`,
+            file.name,
+            chunk.id
+          );
+
+          return { debugEntry, chunkProcessedChunks };
+        } catch (error) {
+          console.error(`Error processing chunk ${chunk.id}:`, error);
+          emitProgress(
+            "error",
+            `Error processing chunk: ${
+              error instanceof Error ? error.message : "Unknown error"
+            }`,
+            file.name,
+            chunk.id
+          );
+          return null;
+        }
+      });
+
+      // Wait for all chunks in this batch to complete
+      const batchResults = await Promise.all(batchPromises);
+
+      // Collect results from successful chunks
+      batchResults.forEach((result) => {
+        if (result) {
+          debugInfo.push(result.debugEntry);
+          processedChunks.push(...result.chunkProcessedChunks);
+        }
+      });
     }
 
     console.log(`Created ${processedChunks.length} processed chunks`);

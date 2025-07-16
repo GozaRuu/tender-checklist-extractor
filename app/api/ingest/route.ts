@@ -60,8 +60,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Calculate total steps
-    const totalSteps = files.length + files.length + 1 + questions.length + 1;
+    // Initial estimate for total steps (will be updated during processing)
+    let totalSteps = files.length * 2 + questions.length + 2; // Rough estimate
 
     // Create streaming response
     const encoder = new TextEncoder();
@@ -70,14 +70,21 @@ export async function POST(request: NextRequest) {
     const stream = new ReadableStream({
       async start(controller) {
         try {
-          // Simple progress callback
+          // Progress callback with ability to update total steps
           const onProgress = (
             step: string,
             message: string,
             filename?: string,
-            chunkId?: string
+            chunkId?: string,
+            updateTotalSteps?: number
           ) => {
             currentStep++;
+
+            // Update total steps if provided
+            if (updateTotalSteps !== undefined) {
+              totalSteps = updateTotalSteps;
+            }
+
             const update: ProgressUpdate = {
               type: "progress",
               step,
@@ -90,7 +97,16 @@ export async function POST(request: NextRequest) {
             };
 
             const chunk = encoder.encode(JSON.stringify(update) + "\n");
-            controller.enqueue(chunk);
+
+            // Check if controller is still open before enqueueing
+            try {
+              controller.enqueue(chunk);
+            } catch (error) {
+              console.warn(
+                "Controller already closed, skipping progress update:",
+                error
+              );
+            }
           };
 
           // Process documents with progress callback
@@ -116,8 +132,16 @@ export async function POST(request: NextRequest) {
           };
 
           const chunk = encoder.encode(JSON.stringify(completionUpdate) + "\n");
-          controller.enqueue(chunk);
-          controller.close();
+
+          try {
+            controller.enqueue(chunk);
+            controller.close();
+          } catch (error) {
+            console.warn(
+              "Controller already closed, skipping completion update:",
+              error
+            );
+          }
         } catch (error) {
           console.error("Error processing documents:", error);
 
