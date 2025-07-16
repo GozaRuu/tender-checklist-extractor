@@ -3,14 +3,7 @@
 import { useFieldArray, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import {
-  Plus,
-  Trash2,
-  Upload,
-  FileText,
-  HelpCircle,
-  Check,
-} from "lucide-react";
+import { Plus, Trash2, Upload, FileText, Check } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -63,7 +56,17 @@ export function UploadForm({ onSubmit, isLoading = false }: UploadFormProps) {
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      questions: [{ question: "" }],
+      questions: [
+        {
+          question:
+            "In welcher Form sind die Angebote/Teilnahmeanträge einzureichen?",
+        },
+        {
+          question: "Wann ist die Frist für die Einreichung von Bieterfragen?",
+        },
+        { question: "Ist die Abgabefrist vor dem 31.12.2025?" },
+        { question: "Sind elektronische Einreichungen erlaubt?" },
+      ],
       files: undefined,
     },
   });
@@ -133,36 +136,6 @@ export function UploadForm({ onSubmit, isLoading = false }: UploadFormProps) {
                   <Plus className="h-4 w-4" />
                   Hinzufügen
                 </Button>
-              </div>
-
-              {/* Examples */}
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <h4 className="font-medium text-blue-900 mb-2 flex items-center gap-2">
-                  <HelpCircle className="h-4 w-4" />
-                  Beispiele
-                </h4>
-                <div className="space-y-2 text-sm text-blue-800">
-                  <div>
-                    <strong>Fragen:</strong>
-                    <ul className="ml-4 mt-1 space-y-1">
-                      <li>
-                        • "In welcher Form sind die Angebote/Teilnahmeanträge
-                        einzureichen?"
-                      </li>
-                      <li>
-                        • "Wann ist die Frist für die Einreichung von
-                        Bieterfragen?"
-                      </li>
-                    </ul>
-                  </div>
-                  <div>
-                    <strong>Bedingungen:</strong>
-                    <ul className="ml-4 mt-1 space-y-1">
-                      <li>• "Ist die Abgabefrist vor dem 31.12.2025?"</li>
-                      <li>• "Sind elektronische Einreichungen erlaubt?"</li>
-                    </ul>
-                  </div>
-                </div>
               </div>
 
               <div className="space-y-3">

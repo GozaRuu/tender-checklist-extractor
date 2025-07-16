@@ -185,9 +185,6 @@ export function ProgressTimeline({
     eventsEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [events]);
 
-  const progressPercentage =
-    totalSteps > 0 ? (currentStep / totalSteps) * 100 : 0;
-
   return (
     <Card className="w-full max-w-4xl mx-auto">
       <CardHeader>
@@ -207,23 +204,6 @@ export function ProgressTimeline({
             </Badge>
           )}
         </CardTitle>
-
-        {totalSteps > 0 && (
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm text-gray-600">
-              <span>
-                Step {currentStep} of {totalSteps}
-              </span>
-              <span>{Math.round(progressPercentage)}%</span>
-            </div>
-            <div className="w-full bg-gray-200 rounded-full h-2">
-              <div
-                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                style={{ width: `${progressPercentage}%` }}
-              />
-            </div>
-          </div>
-        )}
       </CardHeader>
 
       <CardContent>
